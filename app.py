@@ -35,11 +35,11 @@ def run_ai(text, prompt, is_compliance=False, is_header=False, is_search=False, 
     if is_compliance:
         system_rules = "RULES: 1. BE DIRECT. 2. Extract SLAs. 3. SIMPLE ENGLISH."
     elif is_header:
-        system_rules = f"RULES: 1. 5 words or less. 2. Today is {today}. 3. If the document date is before 2026, YOU MUST SAY 'CLOSED'."
+        system_rules = f"RULES: 1. 5 words or less. 2. Today is {today}. 3. If BEFORE 2026, say 'CLOSED'."
     elif is_search:
         system_rules = "You are a helpful assistant. Answer based on document."
     elif is_scope:
-        system_rules = "CORE INSTRUCTION: 1. ANALYZE the whole text. 2. List specific QUANTITIES and ACTION TASKS. 3. NO repetition. 4. Be descriptive and detailed."
+        system_rules = "CORE INSTRUCTION: 1. ANALYZE whole text. 2. List QUANTITIES and TASKS. 3. NO repetition."
     else:
         system_rules = "CORE INSTRUCTION: 1. List ONLY IT gear names. 2. START with bullets (*)."
     
@@ -51,7 +51,7 @@ def run_ai(text, prompt, is_compliance=False, is_header=False, is_search=False, 
         return "⚠️ AI Connection Error."
 
 # ---------------------------
-# 3. UNIVERSAL BID SCRAPER (LA + DGS FIX)
+# 3. SMART AGENCY SPLIT SCRAPER
 # ---------------------------
 def scrape_agency_bids(url):
     try:
@@ -60,31 +60,29 @@ def scrape_agency_bids(url):
         soup = BeautifulSoup(r.text, 'html.parser')
         found_bids = []
         
-        # Noise list refined: 'Specifications' stays for DGS cleanup, 
-        # but we allow 'RFB' and 'RFP' for LA County.
-        noise = ["report", "photos", "sheet", "cards", "calculations", "addendum", "manual", "package", "response", "geotechnical", "reference only", "asbestos", "structural", "supplemental", "specifications", "technical", "dwgs", "dsa"]
+        # Noise for DGS Cleanup
+        noise = ["plans", "specifications", "addendum", "report", "manual", "package", "response", "sheet", "photos", "calculations", "asbestos", "dwgs", "dsa", "technical"]
 
-        for element in soup.find_all(['b', 'strong', 'a', 'td', 'li', 'span']):
-            text = " ".join(element.get_text().split()).strip()
-            
-            # Universal pattern check for LA (RFB/RFP) and DGS (24-, 25-)
-            patterns = ["21-", "22-", "23-", "24-", "25-", "RFB-", "RFP-", "BRC-"]
-            is_match = any(p in text for p in patterns)
-            
-            if is_match:
-                # LA County Strategy: If the ID is in a table, grab the whole row to get the Title
-                if "la.ca.us" in url.lower():
-                    parent_row = element.find_parent('tr')
-                    if parent_row:
-                        text = " ".join(parent_row.get_text(separator=" ").split())
-                
-                # Apply DGS Noise Filter (Only reject if it's a sub-file)
-                if not any(n in text.lower() for n in noise):
-                    clean_title = text.split("Powered by")[0].split("Contact Us")[0].strip()
-                    if len(clean_title) > 8:
-                        found_bids.append(f"📄 {clean_title}")
+        # 🎯 LOGIC A: LA COUNTY (Table-Row Based)
+        if "la.ca.us" in url.lower():
+            for link in soup.find_all('a', href=True):
+                text = link.get_text().strip()
+                if any(p in text for p in ["RFB-", "RFP-", "BRC-"]):
+                    parent_row = link.find_parent('tr')
+                    full_text = " ".join(parent_row.get_text(separator=" ").split()) if parent_row else text
+                    found_bids.append(f"📄 {full_text}")
+
+        # 🎯 LOGIC B: DGS / OTHERS (Pattern-Based with Strict Filter)
+        else:
+            for element in soup.find_all(['b', 'strong', 'a', 'li']):
+                text = " ".join(element.get_text().split()).strip()
+                if any(text.startswith(yr) for yr in ["21-", "22-", "23-", "24-", "25-"]):
+                    # Strict Reject for DGS noise
+                    if not any(n in text.lower() for n in noise):
+                        if len(text) > 15: # Valid project names are usually long
+                            found_bids.append(f"📄 {text}")
         
-        return list(dict.fromkeys(found_bids)) if found_bids else ["❓ No primary project titles found."]
+        return list(dict.fromkeys(found_bids)) if found_bids else ["❓ No primary titles found."]
     except:
         return ["⚠️ Connection error."]
 
