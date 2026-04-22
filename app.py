@@ -49,7 +49,7 @@ def run_ai(text, prompt, is_compliance=False, is_header=False, is_search=False, 
         return "⚠️ Timeout or Connection Error."
 
 # ---------------------------
-# 3. STRICT TITLE-ONLY SCRAPER (UPDATED)
+# 3. STRICT TITLE-ONLY SCRAPER (REFINED)
 # ---------------------------
 def scrape_agency_bids(url):
     try:
@@ -58,19 +58,19 @@ def scrape_agency_bids(url):
         soup = BeautifulSoup(r.text, 'html.parser')
         found_bids = []
         
-        # Keywords to filter out sub-documents and keep only the main titles
-        noise_keywords = ["plans", "specifications", "addendum", "sign in", "response", "package", "manual", "attachments"]
+        # Strict exclusion list to ensure ONLY the main Title shows
+        noise_keywords = ["plans", "specifications", "addendum", "sign in", "response", "package", "manual", "attachments", "manual", "book"]
 
         for element in soup.find_all(['b', 'strong', 'li', 'td', 'span', 'div']):
             text = element.get_text().strip()
             
-            # Identify the primary Project Header (starts with year code 21-, 24-, etc.)
+            # Identify primary Project Header starting with 21-, 24-, etc.
             if any(text.startswith(year) for year in ["21-", "22-", "23-", "24-", "25-"]):
                 
-                # Check if it's the main project title by excluding noise keywords
+                # REJECT anything that isn't the primary Title
                 if not any(noise in text.lower() for noise in noise_keywords):
                     
-                    # Ensure it has an associated PDF link nearby
+                    # Find the primary PDF associated with this specific title
                     link = element.find('a', href=True) or element.find_next('a', href=True)
                     if link and ".pdf" in link['href'].lower():
                         href = link['href']
@@ -92,24 +92,25 @@ st.divider()
 if st.session_state.active_bid_text:
     doc = st.session_state.active_bid_text
     st.subheader("🔍 Search this Document")
-    user_query = st.text_input("Ask a specific question:", key="q_bar")
+    user_query = st.text_input("Ask a specific question about this contract:", key="active_q_bar")
     if user_query:
         st.write(f"**Answer:** {run_ai(doc, user_query, is_search=True)}")
     st.divider()
     
     if st.session_state.analysis_mode == "Reporting":
-        # COMPLIANCE (STRICTLY UNTOUCHED)
+        # COMPLIANCE (UNTOUCHED)
         st.subheader("📊 SLA & Non-Compliance")
         st.info(run_ai(doc, "Identify SLAs, uptime %, and triggers.", is_compliance=True))
     else:
-        # BID DOCUMENT (STRICTLY UNTOUCHED)
+        # BID DOCUMENT (UNTOUCHED)
         if not st.session_state.get("agency_name"):
-            with st.status("🏗️ Analyzing Document..."):
+            with st.status("🏗️ Analyzing..."):
                 st.session_state.status_flag = run_ai(doc, "Is the bid OPEN or CLOSED?", is_header=True)
                 st.session_state.agency_name = run_ai(doc, "Agency name?", is_header=True)
                 st.session_state.project_title = run_ai(doc, "Project Title?", is_header=True)
                 st.session_state.due_date = run_ai(doc, "Deadline date?", is_header=True)
             st.rerun()
+            
         st.subheader("🏛️ Project Snapshot")
         status = st.session_state.status_flag.upper() if st.session_state.status_flag else "UNKNOWN"
         if "CLOSED" in status:
@@ -125,20 +126,21 @@ if st.session_state.active_bid_text:
 else:
     tab1, tab2, tab3 = st.tabs(["📄 Bid Document", "📊 Compliance", "🔗 Agency URL"])
     with tab1:
-        up = st.file_uploader("Upload Bid PDF", type="pdf", key="u1")
+        up = st.file_uploader("Upload Bid PDF", type="pdf", key="u1_file")
         if up:
             st.session_state.active_bid_text = "\n".join([p.extract_text() for p in PdfReader(up).pages])
             st.session_state.analysis_mode = "Standard"; st.rerun()
     with tab2:
-        up_c = st.file_uploader("Upload Contract PDF", type="pdf", key="u2")
+        up_c = st.file_uploader("Upload Contract PDF", type="pdf", key="u2_file")
         if up_c:
             st.session_state.active_bid_text = "\n".join([p.extract_text() for p in PdfReader(up_c).pages])
             st.session_state.analysis_mode = "Reporting"; st.rerun()
     with tab3:
-        url = st.text_input("Agency URL:", key="url_bar")
-        if url:
-            with st.spinner("Filtering for Main Project Titles..."):
-                for b in scrape_agency_bids(url): st.write(b)
+        url_input = st.text_input("Agency URL:", key="agency_url_input")
+        if url_input:
+            with st.spinner("Filtering for Main Titles..."):
+                results = scrape_agency_bids(url_input)
+                for res in results: st.write(res)
 
 with st.sidebar:
     st.header("Project Performance")
