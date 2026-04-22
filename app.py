@@ -73,7 +73,7 @@ def scrape_la_bids(url):
 # ---------------------------
 # 4. MAIN APP LOGIC (LOCKED SECTIONS)
 # ---------------------------
-st.title("🏛️ Government Contract Analyzer")
+st.title("🏛️ Public Sector Contracts AI")
 if st.button("🏠 Home / Reset App"):
     hard_reset()
 st.divider()
