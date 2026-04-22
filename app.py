@@ -36,9 +36,10 @@ def run_ai(text, prompt, is_compliance=False, is_header=False, is_search=False, 
     today = "April 22, 2026"
 
     if is_compliance:
+        # DO NOT TOUCH: Preservation of existing logic
         system_rules = "RULES: 1. BE DIRECT. 2. Extract 'Definition' and 'Objective' for SLAs. 3. SIMPLE ENGLISH."
     elif is_header:
-        # STRICT logic for temporal reasoning (2017 vs 2026)
+        # UPDATED: Ensuring 2017 bids show as CLOSED
         system_rules = f"RULES: 1. Answer in 5 words or less. 2. Compare the document date to {today}. 3. If the year is BEFORE 2026, you MUST say 'CLOSED'."
     elif is_search:
         system_rules = "You are a helpful assistant. Answer specifically based on the document provided."
@@ -62,7 +63,7 @@ def run_ai(text, prompt, is_compliance=False, is_header=False, is_search=False, 
         return "⚠️ Timeout or Connection Error."
 
 # ---------------------------
-# 3. UNIVERSAL AGENCY SCRAPER
+# 3. CONTEXT-AWARE AGENCY SCRAPER
 # ---------------------------
 def scrape_agency_bids(url):
     try:
@@ -70,22 +71,33 @@ def scrape_agency_bids(url):
         r = requests.get(url, headers=headers, timeout=10)
         soup = BeautifulSoup(r.text, 'html.parser')
         
-        # Look for PDF links containing bid-related keywords
-        links = soup.find_all('a', href=True)
         found_bids = []
-        keywords = ["bid", "rfp", "contract", "solicitation", "project", "proposal"]
+        keywords = ["bid", "rfp", "contract", "solicitation", "project", "proposal", "specifications", "plans"]
         
-        for link in links:
-            href = link['href']
-            text = link.get_text().strip().lower()
-            if ".pdf" in href.lower():
-                if any(k in text or k in href.lower() for k in keywords):
-                    full_url = href if href.startswith('http') else url.rstrip('/') + '/' + href.lstrip('/')
-                    found_bids.append(f"📄 [{link.get_text().strip()}]({full_url})")
+        # Tracking headers to find project descriptions (like 'Modernization')
+        current_header = "General Document"
         
-        return found_bids if found_bids else ["❓ Connected, but no PDF bid links were found on this specific page."]
+        for element in soup.find_all(['b', 'strong', 'h1', 'h2', 'h3', 'h4', 'a']):
+            # Capture the descriptive bold text above the links
+            if element.name in ['b', 'strong', 'h1', 'h2', 'h3', 'h4']:
+                header_text = element.get_text().strip()
+                if len(header_text) > 10:
+                    current_header = header_text
+            
+            # Match the header to the PDF link
+            elif element.name == 'a' and element.has_attr('href'):
+                href = element['href']
+                if ".pdf" in href.lower():
+                    link_text = element.get_text().strip()
+                    full_display = f"**{current_header}** → {link_text}"
+                    
+                    if any(k in full_display.lower() or k in href.lower() for k in keywords):
+                        full_url = href if href.startswith('http') else url.rstrip('/') + '/' + href.lstrip('/')
+                        found_bids.append(f"📄 [{full_display}]({full_url})")
+        
+        return list(dict.fromkeys(found_bids)) if found_bids else ["❓ No descriptive PDF links found on this page."]
     except Exception as e:
-        return [f"⚠️ Connection error: {str(e)}"]
+        return [f"⚠️ Error: {str(e)}"]
 
 # ---------------------------
 # 4. MAIN APP LOGIC
@@ -106,9 +118,11 @@ if st.session_state.active_bid_text:
     st.divider()
 
     if st.session_state.analysis_mode == "Reporting":
+        # DO NOT TOUCH: Preserved Reporting tab
         st.subheader("📊 SLA & Non-Compliance")
         st.info(run_ai(doc, "Identify SLAs, uptime %, and non-compliance triggers.", is_compliance=True))
     else:
+        # DO NOT TOUCH: Preserved Standard Analysis flow
         if not st.session_state.get("agency_name"):
             with st.status("🏗️ Analyzing Document..."):
                 st.session_state.status_flag = run_ai(doc, "Is the bid OPEN or CLOSED?", is_header=True)
@@ -136,6 +150,7 @@ if st.session_state.active_bid_text:
             st.success(run_ai(doc, "List ONLY IT hardware, cables, and gear names."))
 
 else:
+    # Agency URL is now Dynamic and Descriptive
     tab1, tab2, tab3 = st.tabs(["📄 Bid Document", "📊 Compliance Requirements", "🔗 Agency URL"])
     with tab1:
         up = st.file_uploader("Upload Bid PDF", type="pdf", key="u1")
@@ -148,9 +163,9 @@ else:
             st.session_state.active_bid_text = "\n".join([p.extract_text() for p in PdfReader(up_c).pages])
             st.session_state.analysis_mode = "Reporting"; st.rerun()
     with tab3:
-        url = st.text_input("Agency URL (Finds PDF links):", key="url_bar")
+        url = st.text_input("Agency URL (Extracts Project Titles + PDFs):", key="url_bar")
         if url:
-            with st.spinner("Scanning page for documents..."):
+            with st.spinner("Mapping Project Titles to Documents..."):
                 bids = scrape_agency_bids(url)
                 for b in bids: st.write(b)
 
