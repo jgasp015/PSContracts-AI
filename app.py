@@ -34,7 +34,6 @@ def run_ai(text, prompt, is_compliance=False, is_header=False, is_search=False, 
     if is_compliance:
         system_rules = "RULES: 1. BE DIRECT. 2. Extract 'Definition' and 'Objective' for SLAs. 3. SIMPLE ENGLISH."
     elif is_header:
-        # Fixed logic for 2017 vs 2026 dates
         system_rules = f"RULES: 1. Answer in 5 words or less. 2. Compare the document date to {today}. 3. If the year is BEFORE 2026, you MUST say 'CLOSED'."
     elif is_search:
         system_rules = "You are a helpful assistant. Answer specifically based on the document provided."
@@ -50,7 +49,7 @@ def run_ai(text, prompt, is_compliance=False, is_header=False, is_search=False, 
         return "⚠️ Timeout or Connection Error."
 
 # ---------------------------
-# 3. SELECTIVE AGENCY SCRAPER (UPDATED)
+# 3. STRICT TITLE-ONLY SCRAPER (UPDATED)
 # ---------------------------
 def scrape_agency_bids(url):
     try:
@@ -59,25 +58,28 @@ def scrape_agency_bids(url):
         soup = BeautifulSoup(r.text, 'html.parser')
         found_bids = []
         
-        # Scans common tags for Project IDs (e.g., 24-XXXX, 25-XXXX)
+        # Keywords to filter out sub-documents and keep only the main titles
+        noise_keywords = ["plans", "specifications", "addendum", "sign in", "response", "package", "manual", "attachments"]
+
         for element in soup.find_all(['b', 'strong', 'li', 'td', 'span', 'div']):
             text = element.get_text().strip()
             
-            # Identify the specific Project Title row
+            # Identify the primary Project Header (starts with year code 21-, 24-, etc.)
             if any(text.startswith(year) for year in ["21-", "22-", "23-", "24-", "25-"]):
-                # Look for the primary PDF link associated with this title
-                link = element.find('a', href=True) or element.find_next('a', href=True)
                 
-                if link and ".pdf" in link['href'].lower():
-                    href = link['href']
-                    full_url = href if href.startswith('http') else url.rstrip('/') + '/' + href.lstrip('/')
-                    # Format as a clean Project Title link
-                    found_bids.append(f"📄 [{text}]({full_url})")
+                # Check if it's the main project title by excluding noise keywords
+                if not any(noise in text.lower() for noise in noise_keywords):
+                    
+                    # Ensure it has an associated PDF link nearby
+                    link = element.find('a', href=True) or element.find_next('a', href=True)
+                    if link and ".pdf" in link['href'].lower():
+                        href = link['href']
+                        full_url = href if href.startswith('http') else url.rstrip('/') + '/' + href.lstrip('/')
+                        found_bids.append(f"📄 [{text}]({full_url})")
         
-        # Remove duplicates while maintaining order
-        return list(dict.fromkeys(found_bids)) if found_bids else ["❓ No specific Project Titles found on this page."]
+        return list(dict.fromkeys(found_bids)) if found_bids else ["❓ No primary Project Titles found."]
     except:
-        return ["⚠️ Connection error. Please check the URL."]
+        return ["⚠️ Connection error."]
 
 # ---------------------------
 # 4. MAIN APP LOGIC (UI)
@@ -90,17 +92,17 @@ st.divider()
 if st.session_state.active_bid_text:
     doc = st.session_state.active_bid_text
     st.subheader("🔍 Search this Document")
-    user_query = st.text_input("Ask a specific question about this contract:", key="q_bar")
+    user_query = st.text_input("Ask a specific question:", key="q_bar")
     if user_query:
         st.write(f"**Answer:** {run_ai(doc, user_query, is_search=True)}")
     st.divider()
     
     if st.session_state.analysis_mode == "Reporting":
-        # COMPLIANCE SECTION (UNTOUCHED)
+        # COMPLIANCE (STRICTLY UNTOUCHED)
         st.subheader("📊 SLA & Non-Compliance")
         st.info(run_ai(doc, "Identify SLAs, uptime %, and triggers.", is_compliance=True))
     else:
-        # BID DOCUMENT SECTION (UNTOUCHED)
+        # BID DOCUMENT (STRICTLY UNTOUCHED)
         if not st.session_state.get("agency_name"):
             with st.status("🏗️ Analyzing Document..."):
                 st.session_state.status_flag = run_ai(doc, "Is the bid OPEN or CLOSED?", is_header=True)
@@ -118,7 +120,7 @@ if st.session_state.active_bid_text:
         st.write(f"**📄 BID NAME:** {st.session_state.project_title}")
         st.divider()
         b1, b2 = st.tabs(["📖 Scope of Work", "🛠️ Specifications"])
-        with b1: st.info(run_ai(doc, "Summarize the scope.", is_scope=True))
+        with b1: st.info(run_ai(doc, "Summarize scope.", is_scope=True))
         with b2: st.success(run_ai(doc, "List ONLY IT hardware."))
 else:
     tab1, tab2, tab3 = st.tabs(["📄 Bid Document", "📊 Compliance", "🔗 Agency URL"])
@@ -133,9 +135,9 @@ else:
             st.session_state.active_bid_text = "\n".join([p.extract_text() for p in PdfReader(up_c).pages])
             st.session_state.analysis_mode = "Reporting"; st.rerun()
     with tab3:
-        url = st.text_input("Agency URL (Extracts Project Titles):", key="url_bar")
+        url = st.text_input("Agency URL:", key="url_bar")
         if url:
-            with st.spinner("Extracting Main Project Titles..."):
+            with st.spinner("Filtering for Main Project Titles..."):
                 for b in scrape_agency_bids(url): st.write(b)
 
 with st.sidebar:
