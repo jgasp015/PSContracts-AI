@@ -50,7 +50,7 @@ def run_ai(text, prompt, is_compliance=False, is_header=False, is_search=False, 
         return "⚠️ AI Connection Error."
 
 # ---------------------------
-# 3. STRICT UNIVERSAL BID SCRAPER (FIXED)
+# 3. CLEAN UNIVERSAL BID SCRAPER (STRICT FILTER)
 # ---------------------------
 def scrape_agency_bids(url):
     try:
@@ -59,11 +59,12 @@ def scrape_agency_bids(url):
         soup = BeautifulSoup(r.text, 'html.parser')
         found_bids = []
         
-        # Noise list to remove sub-files and non-titles
+        # Strict Noise list to remove sub-files and leave ONLY the Project Titles
         noise = [
             "report", "photos", "sheet", "cards", "calculations", "addendum", 
             "plans", "manual", "package", "response", "geotechnical", 
-            "reference only", "asbestos", "structural", "supplemental"
+            "reference only", "asbestos", "structural", "supplemental", 
+            "specifications", "technical", "dwgs", "dsa"
         ]
 
         for element in soup.find_all(['b', 'strong', 'a', 'td', 'li']):
@@ -73,7 +74,7 @@ def scrape_agency_bids(url):
             is_id = any(p in text for p in ["21-", "22-", "23-", "24-", "25-", "RFB-IS-", "RFP-"])
             
             if is_id:
-                # Capture LA County row text
+                # Capture LA County row text if it's a table link
                 if element.name == 'td' or element.name == 'a':
                     parent_row = element.find_parent('tr')
                     if parent_row:
@@ -81,7 +82,7 @@ def scrape_agency_bids(url):
                 
                 # REJECT lines containing any noise words (Specifically for DGS cleanup)
                 if not any(n in text.lower() for n in noise):
-                    # Clean up and shorten strings
+                    # Clean up strings from generic page navigation
                     clean_title = text.split("Powered by")[0].split("Contact Us")[0].strip()
                     if len(clean_title) > 12:
                         found_bids.append(f"📄 {clean_title}")
@@ -143,7 +144,7 @@ else:
     with tab3:
         url_input = st.text_input("Agency URL:", key="agency_url")
         if url_input:
-            with st.spinner("Extracting Main Project Names..."):
+            with st.spinner("Filtering for Bid Titles..."):
                 for b in scrape_agency_bids(url_input): st.write(b)
 
 with st.sidebar:
