@@ -21,7 +21,7 @@ def hard_reset():
     st.rerun()
 
 # ---------------------------
-# 2. THE ENGINE (RESTORED SCOPE LOGIC)
+# 2. THE ENGINE (LOCKED)
 # ---------------------------
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 
@@ -39,7 +39,6 @@ def run_ai(text, prompt, is_compliance=False, is_header=False, is_search=False, 
     elif is_search:
         system_rules = "You are a helpful assistant. Answer based on document."
     elif is_scope:
-        # RESTORED: This is your original high-quality summary logic
         system_rules = "CORE INSTRUCTION: 1. ANALYZE the whole text. 2. List specific QUANTITIES and ACTION TASKS. 3. NO repetition. 4. Be descriptive and detailed."
     else:
         system_rules = "CORE INSTRUCTION: 1. List ONLY IT gear names. 2. START with bullets (*)."
@@ -52,7 +51,7 @@ def run_ai(text, prompt, is_compliance=False, is_header=False, is_search=False, 
         return "⚠️ AI Connection Error."
 
 # ---------------------------
-# 3. UNIVERSAL BID SCRAPER (LOCKED)
+# 3. UNIVERSAL BID SCRAPER (LA + DGS FIX)
 # ---------------------------
 def scrape_agency_bids(url):
     try:
@@ -60,22 +59,37 @@ def scrape_agency_bids(url):
         r = requests.get(url, headers=headers, timeout=15)
         soup = BeautifulSoup(r.text, 'html.parser')
         found_bids = []
-        noise = ["report", "photos", "sheet", "cards", "calculations", "addendum", "plans", "manual", "package", "response", "geotechnical", "reference only", "asbestos", "structural", "supplemental", "specifications", "technical", "dwgs", "dsa"]
-        for element in soup.find_all(['b', 'strong', 'a', 'td', 'li']):
+        
+        # Noise list refined: 'Specifications' stays for DGS cleanup, 
+        # but we allow 'RFB' and 'RFP' for LA County.
+        noise = ["report", "photos", "sheet", "cards", "calculations", "addendum", "manual", "package", "response", "geotechnical", "reference only", "asbestos", "structural", "supplemental", "specifications", "technical", "dwgs", "dsa"]
+
+        for element in soup.find_all(['b', 'strong', 'a', 'td', 'li', 'span']):
             text = " ".join(element.get_text().split()).strip()
-            is_id = any(p in text for p in ["21-", "22-", "23-", "24-", "25-", "RFB-IS-", "RFP-"])
-            if is_id:
-                if element.name == 'td' or element.name == 'a':
+            
+            # Universal pattern check for LA (RFB/RFP) and DGS (24-, 25-)
+            patterns = ["21-", "22-", "23-", "24-", "25-", "RFB-", "RFP-", "BRC-"]
+            is_match = any(p in text for p in patterns)
+            
+            if is_match:
+                # LA County Strategy: If the ID is in a table, grab the whole row to get the Title
+                if "la.ca.us" in url.lower():
                     parent_row = element.find_parent('tr')
-                    if parent_row: text = " ".join(parent_row.get_text(separator=" ").split())
+                    if parent_row:
+                        text = " ".join(parent_row.get_text(separator=" ").split())
+                
+                # Apply DGS Noise Filter (Only reject if it's a sub-file)
                 if not any(n in text.lower() for n in noise):
                     clean_title = text.split("Powered by")[0].split("Contact Us")[0].strip()
-                    if len(clean_title) > 12: found_bids.append(f"📄 {clean_title}")
+                    if len(clean_title) > 8:
+                        found_bids.append(f"📄 {clean_title}")
+        
         return list(dict.fromkeys(found_bids)) if found_bids else ["❓ No primary project titles found."]
-    except: return ["⚠️ Connection error."]
+    except:
+        return ["⚠️ Connection error."]
 
 # ---------------------------
-# 4. MAIN APP LOGIC (RESTORED UI)
+# 4. MAIN APP LOGIC (LOCKED)
 # ---------------------------
 st.title("🏛️ Public Sector Contracts AI")
 if st.button("🏠 Home / Reset App"):
@@ -103,8 +117,6 @@ if st.session_state.active_bid_text:
             st.rerun()
 
         st.subheader("🏛️ Project Snapshot")
-        
-        # Keep the hard-logic year check to ensure status stays Red/CLOSED for 2022
         status_raw = st.session_state.status_flag.upper()
         date_raw = st.session_state.due_date
         is_past_year = any(yr in date_raw for yr in ["2021", "2022", "2023", "2024", "2025"])
@@ -119,11 +131,8 @@ if st.session_state.active_bid_text:
         st.divider()
         
         b1, b2 = st.tabs(["📖 Scope of Work", "🛠️ Specifications"])
-        with b1: 
-            # RESTORED: Back to detailed summarization
-            st.info(run_ai(doc, "Summarize the scope and quantities.", is_scope=True))
-        with b2: 
-            st.success(run_ai(doc, "List ONLY IT hardware, gear, and camera equipment."))
+        with b1: st.info(run_ai(doc, "Summarize the scope and quantities.", is_scope=True))
+        with b2: st.success(run_ai(doc, "List ONLY IT hardware, gear, and camera equipment."))
 else:
     tab1, tab2, tab3 = st.tabs(["📄 Bid Document", "📊 Compliance", "🔗 Agency URL"])
     with tab1:
