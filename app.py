@@ -5,7 +5,7 @@ from bs4 import BeautifulSoup
 import os 
 
 # ---------------------------
-# 1. STATE & RESET (UNTOUCHED)
+# 1. STATE & RESET (LOCKED)
 # ---------------------------
 if "total_saved" not in st.session_state:
     st.session_state.total_saved = 480
@@ -21,7 +21,7 @@ def hard_reset():
     st.rerun()
 
 # ---------------------------
-# 2. THE ENGINE (UNTOUCHED)
+# 2. THE ENGINE (LOCKED)
 # ---------------------------
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 
@@ -34,13 +34,14 @@ def run_ai(text, prompt, is_compliance=False, is_header=False, is_search=False, 
     if is_compliance:
         system_rules = "RULES: 1. BE DIRECT. 2. Extract 'Definition' and 'Objective' for SLAs. 3. SIMPLE ENGLISH."
     elif is_header:
-        system_rules = f"RULES: 1. Answer in 5 words or less. 2. Compare the document date to {today}. 3. If the year is BEFORE 2026, you MUST say 'CLOSED'."
+        system_rules = f"RULES: 1. Answer in 5 words or less. 2. Compare date to {today}. 3. If BEFORE 2026, say 'CLOSED'."
     elif is_search:
-        system_rules = "You are a helpful assistant. Answer specifically based on the document provided."
+        system_rules = "You are a helpful assistant. Answer based on the document."
     elif is_scope:
-        system_rules = "CORE INSTRUCTION: 1. ANALYZE the whole text. 2. List specific QUANTITIES and ACTION TASKS. 3. NO repetition."
+        system_rules = "CORE INSTRUCTION: 1. ANALYZE the whole text. 2. List QUANTITIES and TASKS. 3. NO repetition."
     else:
         system_rules = "CORE INSTRUCTION: 1. List ONLY IT gear names. 2. START IMMEDIATELY with vertical bullets (*)."
+    
     payload = {"model": "llama-3.1-8b-instant", "messages": [{"role": "system", "content": system_rules}, {"role": "user", "content": f"Text: {ctx}\n\nTask: {prompt}"}], "temperature": 0.0}
     try:
         r = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json=payload, timeout=35)
@@ -49,40 +50,46 @@ def run_ai(text, prompt, is_compliance=False, is_header=False, is_search=False, 
         return "⚠️ Timeout or Connection Error."
 
 # ---------------------------
-# 3. STRICT TITLE-ONLY SCRAPER (REFINED)
+# 3. UNIVERSAL BID SCRAPER (UPDATED)
 # ---------------------------
 def scrape_agency_bids(url):
     try:
-        headers = {'User-Agent': 'Mozilla/5.0'}
-        r = requests.get(url, headers=headers, timeout=10)
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+        r = requests.get(url, headers=headers, timeout=15)
         soup = BeautifulSoup(r.text, 'html.parser')
         found_bids = []
         
-        # Strict exclusion list to ensure ONLY the main Title shows
-        noise_keywords = ["plans", "specifications", "addendum", "sign in", "response", "package", "manual", "attachments", "manual", "book"]
-
-        for element in soup.find_all(['b', 'strong', 'li', 'td', 'span', 'div']):
-            text = element.get_text().strip()
+        # Look for table rows (LA County) or list items (DGS/Sacramento)
+        # We target links that look like Bid IDs or contain 'Bid' keywords
+        for link in soup.find_all('a', href=True):
+            href = link['href']
+            text = link.get_text().strip()
             
-            # Identify primary Project Header starting with 21-, 24-, etc.
-            if any(text.startswith(year) for year in ["21-", "22-", "23-", "24-", "25-"]):
+            # Pattern check: Does it look like a Bid/Solicitation ID?
+            # Targets: RFB-IS-..., RFP-..., 24-..., 25-..., etc.
+            bid_id_patterns = ["RFB-", "RFP-", "21-", "22-", "23-", "24-", "25-", "BRC", "Solicitation"]
+            
+            is_bid_link = any(p in text or p in href for p in bid_id_patterns)
+            
+            if is_bid_link:
+                # Get the full project description from the surrounding cell if possible (LA Style)
+                parent_cell = link.find_parent(['td', 'li', 'div'])
+                description = parent_cell.get_text(separator=" ", strip=True) if parent_cell else text
                 
-                # REJECT anything that isn't the primary Title
-                if not any(noise in text.lower() for noise in noise_keywords):
-                    
-                    # Find the primary PDF associated with this specific title
-                    link = element.find('a', href=True) or element.find_next('a', href=True)
-                    if link and ".pdf" in link['href'].lower():
-                        href = link['href']
-                        full_url = href if href.startswith('http') else url.rstrip('/') + '/' + href.lstrip('/')
-                        found_bids.append(f"📄 [{text}]({full_url})")
+                # Clean up description (remove extra whitespace/newlines)
+                clean_desc = " ".join(description.split())
+                
+                # Ensure it's not a tiny link like "More" or "PDF"
+                if len(clean_desc) > 5:
+                    full_url = href if href.startswith('http') else url.rstrip('/') + '/' + href.lstrip('/')
+                    found_bids.append(f"📄 [{clean_desc}]({full_url})")
         
-        return list(dict.fromkeys(found_bids)) if found_bids else ["❓ No primary Project Titles found."]
-    except:
-        return ["⚠️ Connection error."]
+        return list(dict.fromkeys(found_bids)) if found_bids else ["❓ No solicitations identified. The site may be using a protected portal."]
+    except Exception as e:
+        return [f"⚠️ Connection error: {str(e)}"]
 
 # ---------------------------
-# 4. MAIN APP LOGIC (UI)
+# 4. MAIN APP LOGIC (LOCKED)
 # ---------------------------
 st.title("🏛️ Public Sector Contracts AI")
 if st.button("🏠 Home / Reset App"):
@@ -92,17 +99,15 @@ st.divider()
 if st.session_state.active_bid_text:
     doc = st.session_state.active_bid_text
     st.subheader("🔍 Search this Document")
-    user_query = st.text_input("Ask a specific question about this contract:", key="active_q_bar")
-    if user_query:
-        st.write(f"**Answer:** {run_ai(doc, user_query, is_search=True)}")
+    user_q = st.text_input("Ask a specific question:", key="active_q")
+    if user_q:
+        st.write(f"**Answer:** {run_ai(doc, user_q, is_search=True)}")
     st.divider()
     
     if st.session_state.analysis_mode == "Reporting":
-        # COMPLIANCE (UNTOUCHED)
         st.subheader("📊 SLA & Non-Compliance")
         st.info(run_ai(doc, "Identify SLAs, uptime %, and triggers.", is_compliance=True))
     else:
-        # BID DOCUMENT (UNTOUCHED)
         if not st.session_state.get("agency_name"):
             with st.status("🏗️ Analyzing..."):
                 st.session_state.status_flag = run_ai(doc, "Is the bid OPEN or CLOSED?", is_header=True)
@@ -110,15 +115,13 @@ if st.session_state.active_bid_text:
                 st.session_state.project_title = run_ai(doc, "Project Title?", is_header=True)
                 st.session_state.due_date = run_ai(doc, "Deadline date?", is_header=True)
             st.rerun()
-            
         st.subheader("🏛️ Project Snapshot")
         status = st.session_state.status_flag.upper() if st.session_state.status_flag else "UNKNOWN"
         if "CLOSED" in status:
             st.error(f"● STATUS: {status} (Deadline was {st.session_state.due_date})")
         else:
             st.success(f"● STATUS: {status} | DUE: {st.session_state.due_date}")
-        st.write(f"**🏛️ AGENCY:** {st.session_state.agency_name}")
-        st.write(f"**📄 BID NAME:** {st.session_state.project_title}")
+        st.write(f"**🏛️ AGENCY:** {st.session_state.agency_name}"); st.write(f"**📄 BID NAME:** {st.session_state.project_title}")
         st.divider()
         b1, b2 = st.tabs(["📖 Scope of Work", "🛠️ Specifications"])
         with b1: st.info(run_ai(doc, "Summarize scope.", is_scope=True))
@@ -126,19 +129,19 @@ if st.session_state.active_bid_text:
 else:
     tab1, tab2, tab3 = st.tabs(["📄 Bid Document", "📊 Compliance", "🔗 Agency URL"])
     with tab1:
-        up = st.file_uploader("Upload Bid PDF", type="pdf", key="u1_file")
+        up = st.file_uploader("Upload Bid PDF", type="pdf", key="u1")
         if up:
             st.session_state.active_bid_text = "\n".join([p.extract_text() for p in PdfReader(up).pages])
             st.session_state.analysis_mode = "Standard"; st.rerun()
     with tab2:
-        up_c = st.file_uploader("Upload Contract PDF", type="pdf", key="u2_file")
+        up_c = st.file_uploader("Upload Contract PDF", type="pdf", key="u2")
         if up_c:
             st.session_state.active_bid_text = "\n".join([p.extract_text() for p in PdfReader(up_c).pages])
             st.session_state.analysis_mode = "Reporting"; st.rerun()
     with tab3:
-        url_input = st.text_input("Agency URL:", key="agency_url_input")
+        url_input = st.text_input("Agency URL (Extracts Bids):", key="agency_url")
         if url_input:
-            with st.spinner("Filtering for Main Titles..."):
+            with st.spinner("Scanning for active solicitations..."):
                 results = scrape_agency_bids(url_input)
                 for res in results: st.write(res)
 
