@@ -38,7 +38,7 @@ def run_ai(text, prompt, is_compliance=False, is_header=False, is_search=False, 
     if is_compliance:
         system_rules = "RULES: 1. BE DIRECT. 2. Extract 'Definition' and 'Objective' for SLAs. 3. SIMPLE ENGLISH."
     elif is_header:
-    system_rules = f"RULES: 1. Answer in 5 words or less. 2. Compare the document date to {today}. 3. If the document year is BEFORE 2026, you MUST say 'CLOSED'."
+        system_rules = f"RULES: 1. Answer in 5 words or less. 2. Compare the document date to {today}. 3. If the document year is BEFORE 2026, you MUST say 'CLOSED'."
     elif is_search:
         system_rules = "You are a helpful assistant. Answer specifically based on the document provided."
     elif is_scope:
