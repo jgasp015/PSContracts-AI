@@ -32,64 +32,63 @@ def run_ai(text, prompt, is_compliance=False, is_header=False, is_search=False, 
     ctx = text[:60000] 
     today = "April 22, 2026"
     if is_compliance:
-        system_rules = "RULES: 1. BE DIRECT. 2. Extract 'Definition' and 'Objective' for SLAs. 3. SIMPLE ENGLISH."
+        system_rules = "RULES: 1. BE DIRECT. 2. Extract SLAs. 3. SIMPLE ENGLISH."
     elif is_header:
-        system_rules = f"RULES: 1. Answer in 5 words or less. 2. Compare date to {today}. 3. If BEFORE 2026, say 'CLOSED'."
+        system_rules = f"RULES: 1. 5 words or less. 2. If BEFORE {today}, say 'CLOSED'."
     elif is_search:
-        system_rules = "You are a helpful assistant. Answer based on the document."
+        system_rules = "You are a helpful assistant. Answer based on document."
     elif is_scope:
-        system_rules = "CORE INSTRUCTION: 1. ANALYZE the whole text. 2. List QUANTITIES and TASKS. 3. NO repetition."
+        system_rules = "CORE INSTRUCTION: 1. ANALYZE text. 2. List QUANTITIES and TASKS."
     else:
-        system_rules = "CORE INSTRUCTION: 1. List ONLY IT gear names. 2. START IMMEDIATELY with vertical bullets (*)."
+        system_rules = "CORE INSTRUCTION: 1. List ONLY IT gear names. 2. START with bullets (*)."
     
     payload = {"model": "llama-3.1-8b-instant", "messages": [{"role": "system", "content": system_rules}, {"role": "user", "content": f"Text: {ctx}\n\nTask: {prompt}"}], "temperature": 0.0}
     try:
         r = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json=payload, timeout=35)
         return r.json()["choices"][0]["message"]["content"].strip()
     except:
-        return "⚠️ Timeout or Connection Error."
+        return "⚠️ AI Connection Error."
 
 # ---------------------------
-# 3. UNIVERSAL BID SCRAPER (UPDATED)
+# 3. CONTEXT-AWARE BID TITLE SCRAPER (FIXED)
 # ---------------------------
 def scrape_agency_bids(url):
     try:
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+        headers = {'User-Agent': 'Mozilla/5.0'}
         r = requests.get(url, headers=headers, timeout=15)
         soup = BeautifulSoup(r.text, 'html.parser')
         found_bids = []
         
-        # Look for table rows (LA County) or list items (DGS/Sacramento)
-        # We target links that look like Bid IDs or contain 'Bid' keywords
-        for link in soup.find_all('a', href=True):
-            href = link['href']
-            text = link.get_text().strip()
+        # Keywords to filter out noise from DGS
+        noise = ["plans", "specifications", "addendum", "manual", "package", "response"]
+
+        # Universal loop to find Bid IDs
+        for element in soup.find_all(['b', 'strong', 'a', 'td', 'li']):
+            text = " ".join(element.get_text().split()).strip()
             
-            # Pattern check: Does it look like a Bid/Solicitation ID?
-            # Targets: RFB-IS-..., RFP-..., 24-..., 25-..., etc.
-            bid_id_patterns = ["RFB-", "RFP-", "21-", "22-", "23-", "24-", "25-", "BRC", "Solicitation"]
+            # Pattern check: 21-XXXX, 24-XXXX (DGS) or RFB-IS-XXXX (LA)
+            is_id = any(p in text for p in ["21-", "22-", "23-", "24-", "25-", "RFB-IS-", "RFP-"])
             
-            is_bid_link = any(p in text or p in href for p in bid_id_patterns)
-            
-            if is_bid_link:
-                # Get the full project description from the surrounding cell if possible (LA Style)
-                parent_cell = link.find_parent(['td', 'li', 'div'])
-                description = parent_cell.get_text(separator=" ", strip=True) if parent_cell else text
+            if is_id:
+                # LA COUNTY FIX: If it's a table cell, the title is usually in the same row
+                if element.name == 'td' or element.name == 'a':
+                    parent_row = element.find_parent('tr')
+                    if parent_row:
+                        text = " ".join(parent_row.get_text(separator=" ").split())
                 
-                # Clean up description (remove extra whitespace/newlines)
-                clean_desc = " ".join(description.split())
-                
-                # Ensure it's not a tiny link like "More" or "PDF"
-                if len(clean_desc) > 5:
-                    full_url = href if href.startswith('http') else url.rstrip('/') + '/' + href.lstrip('/')
-                    found_bids.append(f"📄 [{clean_desc}]({full_url})")
+                # DGS FIX: Reject if it's just a sub-file link
+                if not any(n in text.lower() for n in noise):
+                    # Clean up the string to remove generic footer text
+                    clean_title = text.split("Powered by")[0].split("Contact Us")[0].strip()
+                    if len(clean_title) > 10:
+                        found_bids.append(f"📄 {clean_title}")
         
-        return list(dict.fromkeys(found_bids)) if found_bids else ["❓ No solicitations identified. The site may be using a protected portal."]
-    except Exception as e:
-        return [f"⚠️ Connection error: {str(e)}"]
+        return list(dict.fromkeys(found_bids)) if found_bids else ["❓ No bid titles found."]
+    except:
+        return ["⚠️ Connection error."]
 
 # ---------------------------
-# 4. MAIN APP LOGIC (LOCKED)
+# 4. MAIN APP LOGIC (LOCKED UI)
 # ---------------------------
 st.title("🏛️ Public Sector Contracts AI")
 if st.button("🏠 Home / Reset App"):
@@ -99,26 +98,26 @@ st.divider()
 if st.session_state.active_bid_text:
     doc = st.session_state.active_bid_text
     st.subheader("🔍 Search this Document")
-    user_q = st.text_input("Ask a specific question:", key="active_q")
+    user_q = st.text_input("Ask a question:", key="active_q")
     if user_q:
         st.write(f"**Answer:** {run_ai(doc, user_q, is_search=True)}")
     st.divider()
     
     if st.session_state.analysis_mode == "Reporting":
         st.subheader("📊 SLA & Non-Compliance")
-        st.info(run_ai(doc, "Identify SLAs, uptime %, and triggers.", is_compliance=True))
+        st.info(run_ai(doc, "Identify SLAs and triggers.", is_compliance=True))
     else:
         if not st.session_state.get("agency_name"):
             with st.status("🏗️ Analyzing..."):
-                st.session_state.status_flag = run_ai(doc, "Is the bid OPEN or CLOSED?", is_header=True)
-                st.session_state.agency_name = run_ai(doc, "Agency name?", is_header=True)
-                st.session_state.project_title = run_ai(doc, "Project Title?", is_header=True)
-                st.session_state.due_date = run_ai(doc, "Deadline date?", is_header=True)
+                st.session_state.status_flag = run_ai(doc, "OPEN or CLOSED?", is_header=True)
+                st.session_state.agency_name = run_ai(doc, "Agency?", is_header=True)
+                st.session_state.project_title = run_ai(doc, "Title?", is_header=True)
+                st.session_state.due_date = run_ai(doc, "Deadline?", is_header=True)
             st.rerun()
         st.subheader("🏛️ Project Snapshot")
         status = st.session_state.status_flag.upper() if st.session_state.status_flag else "UNKNOWN"
         if "CLOSED" in status:
-            st.error(f"● STATUS: {status} (Deadline was {st.session_state.due_date})")
+            st.error(f"● STATUS: {status} | Deadline: {st.session_state.due_date}")
         else:
             st.success(f"● STATUS: {status} | DUE: {st.session_state.due_date}")
         st.write(f"**🏛️ AGENCY:** {st.session_state.agency_name}"); st.write(f"**📄 BID NAME:** {st.session_state.project_title}")
@@ -139,11 +138,10 @@ else:
             st.session_state.active_bid_text = "\n".join([p.extract_text() for p in PdfReader(up_c).pages])
             st.session_state.analysis_mode = "Reporting"; st.rerun()
     with tab3:
-        url_input = st.text_input("Agency URL (Extracts Bids):", key="agency_url")
+        url_input = st.text_input("Agency URL:", key="agency_url")
         if url_input:
-            with st.spinner("Scanning for active solicitations..."):
-                results = scrape_agency_bids(url_input)
-                for res in results: st.write(res)
+            with st.spinner("Extracting Bid Titles..."):
+                for b in scrape_agency_bids(url_input): st.write(b)
 
 with st.sidebar:
     st.header("Project Performance")
