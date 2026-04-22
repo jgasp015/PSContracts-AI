@@ -50,7 +50,7 @@ def run_ai(text, prompt, is_compliance=False, is_header=False, is_search=False, 
         return "⚠️ AI Connection Error."
 
 # ---------------------------
-# 3. CONTEXT-AWARE BID TITLE SCRAPER (FIXED)
+# 3. STRICT UNIVERSAL BID SCRAPER (FIXED)
 # ---------------------------
 def scrape_agency_bids(url):
     try:
@@ -59,31 +59,34 @@ def scrape_agency_bids(url):
         soup = BeautifulSoup(r.text, 'html.parser')
         found_bids = []
         
-        # Keywords to filter out noise from DGS
-        noise = ["plans", "specifications", "addendum", "manual", "package", "response"]
+        # Noise list to remove sub-files and non-titles
+        noise = [
+            "report", "photos", "sheet", "cards", "calculations", "addendum", 
+            "plans", "manual", "package", "response", "geotechnical", 
+            "reference only", "asbestos", "structural", "supplemental"
+        ]
 
-        # Universal loop to find Bid IDs
         for element in soup.find_all(['b', 'strong', 'a', 'td', 'li']):
             text = " ".join(element.get_text().split()).strip()
             
-            # Pattern check: 21-XXXX, 24-XXXX (DGS) or RFB-IS-XXXX (LA)
+            # Check for Project IDs (24-, RFB-, etc.)
             is_id = any(p in text for p in ["21-", "22-", "23-", "24-", "25-", "RFB-IS-", "RFP-"])
             
             if is_id:
-                # LA COUNTY FIX: If it's a table cell, the title is usually in the same row
+                # Capture LA County row text
                 if element.name == 'td' or element.name == 'a':
                     parent_row = element.find_parent('tr')
                     if parent_row:
                         text = " ".join(parent_row.get_text(separator=" ").split())
                 
-                # DGS FIX: Reject if it's just a sub-file link
+                # REJECT lines containing any noise words (Specifically for DGS cleanup)
                 if not any(n in text.lower() for n in noise):
-                    # Clean up the string to remove generic footer text
+                    # Clean up and shorten strings
                     clean_title = text.split("Powered by")[0].split("Contact Us")[0].strip()
-                    if len(clean_title) > 10:
+                    if len(clean_title) > 12:
                         found_bids.append(f"📄 {clean_title}")
         
-        return list(dict.fromkeys(found_bids)) if found_bids else ["❓ No bid titles found."]
+        return list(dict.fromkeys(found_bids)) if found_bids else ["❓ No primary project titles found."]
     except:
         return ["⚠️ Connection error."]
 
@@ -140,7 +143,7 @@ else:
     with tab3:
         url_input = st.text_input("Agency URL:", key="agency_url")
         if url_input:
-            with st.spinner("Extracting Bid Titles..."):
+            with st.spinner("Extracting Main Project Names..."):
                 for b in scrape_agency_bids(url_input): st.write(b)
 
 with st.sidebar:
