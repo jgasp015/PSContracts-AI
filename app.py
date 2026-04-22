@@ -21,7 +21,7 @@ def hard_reset():
     st.rerun()
 
 # ---------------------------
-# 2. THE ENGINE (LOCKED)
+# 2. THE ENGINE (RESTORED SCOPE LOGIC)
 # ---------------------------
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 
@@ -30,19 +30,17 @@ def run_ai(text, prompt, is_compliance=False, is_header=False, is_search=False, 
         return "⚠️ API Key missing in Railway Variables."
     headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
     ctx = text[:60000] 
-    
-    # Critical for the AI to know the current year
     today = "April 22, 2026"
     
     if is_compliance:
         system_rules = "RULES: 1. BE DIRECT. 2. Extract SLAs. 3. SIMPLE ENGLISH."
     elif is_header:
-        # STRONGER INSTRUCTIONS: Force the AI to recognize the past
         system_rules = f"RULES: 1. 5 words or less. 2. Today is {today}. 3. If the document date is before 2026, YOU MUST SAY 'CLOSED'."
     elif is_search:
         system_rules = "You are a helpful assistant. Answer based on document."
     elif is_scope:
-        system_rules = "CORE INSTRUCTION: 1. ANALYZE text. 2. List QUANTITIES and TASKS."
+        # RESTORED: This is your original high-quality summary logic
+        system_rules = "CORE INSTRUCTION: 1. ANALYZE the whole text. 2. List specific QUANTITIES and ACTION TASKS. 3. NO repetition. 4. Be descriptive and detailed."
     else:
         system_rules = "CORE INSTRUCTION: 1. List ONLY IT gear names. 2. START with bullets (*)."
     
@@ -54,7 +52,7 @@ def run_ai(text, prompt, is_compliance=False, is_header=False, is_search=False, 
         return "⚠️ AI Connection Error."
 
 # ---------------------------
-# 3. CLEAN UNIVERSAL BID SCRAPER (LOCKED)
+# 3. UNIVERSAL BID SCRAPER (LOCKED)
 # ---------------------------
 def scrape_agency_bids(url):
     try:
@@ -73,11 +71,11 @@ def scrape_agency_bids(url):
                 if not any(n in text.lower() for n in noise):
                     clean_title = text.split("Powered by")[0].split("Contact Us")[0].strip()
                     if len(clean_title) > 12: found_bids.append(f"📄 {clean_title}")
-        return list(dict.fromkeys(found_bids)) if found_bids else ["❓ No primary titles found."]
+        return list(dict.fromkeys(found_bids)) if found_bids else ["❓ No primary project titles found."]
     except: return ["⚠️ Connection error."]
 
 # ---------------------------
-# 4. MAIN APP LOGIC (FIXED STATUS LOGIC)
+# 4. MAIN APP LOGIC (RESTORED UI)
 # ---------------------------
 st.title("🏛️ Public Sector Contracts AI")
 if st.button("🏠 Home / Reset App"):
@@ -106,11 +104,9 @@ if st.session_state.active_bid_text:
 
         st.subheader("🏛️ Project Snapshot")
         
-        # --- HARD LOGIC OVERRIDE FOR 2026 PROJECT DEFENSE ---
+        # Keep the hard-logic year check to ensure status stays Red/CLOSED for 2022
         status_raw = st.session_state.status_flag.upper()
         date_raw = st.session_state.due_date
-        
-        # If the AI said OPEN but the date contains 2022, 2023, 2024, or 2025... force it to CLOSED.
         is_past_year = any(yr in date_raw for yr in ["2021", "2022", "2023", "2024", "2025"])
         
         if "CLOSED" in status_raw or is_past_year:
@@ -123,8 +119,11 @@ if st.session_state.active_bid_text:
         st.divider()
         
         b1, b2 = st.tabs(["📖 Scope of Work", "🛠️ Specifications"])
-        with b1: st.info(run_ai(doc, "Summarize scope.", is_scope=True))
-        with b2: st.success(run_ai(doc, "List ONLY IT hardware."))
+        with b1: 
+            # RESTORED: Back to detailed summarization
+            st.info(run_ai(doc, "Summarize the scope and quantities.", is_scope=True))
+        with b2: 
+            st.success(run_ai(doc, "List ONLY IT hardware, gear, and camera equipment."))
 else:
     tab1, tab2, tab3 = st.tabs(["📄 Bid Document", "📊 Compliance", "🔗 Agency URL"])
     with tab1:
