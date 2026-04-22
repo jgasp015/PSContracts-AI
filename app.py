@@ -30,11 +30,15 @@ def run_ai(text, prompt, is_compliance=False, is_header=False, is_search=False, 
         return "⚠️ API Key missing in Railway Variables."
     headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
     ctx = text[:60000] 
+    
+    # Critical for the AI to know the current year
     today = "April 22, 2026"
+    
     if is_compliance:
         system_rules = "RULES: 1. BE DIRECT. 2. Extract SLAs. 3. SIMPLE ENGLISH."
     elif is_header:
-        system_rules = f"RULES: 1. 5 words or less. 2. If BEFORE {today}, say 'CLOSED'."
+        # STRONGER INSTRUCTIONS: Force the AI to recognize the past
+        system_rules = f"RULES: 1. 5 words or less. 2. Today is {today}. 3. If the document date is before 2026, YOU MUST SAY 'CLOSED'."
     elif is_search:
         system_rules = "You are a helpful assistant. Answer based on document."
     elif is_scope:
@@ -50,7 +54,7 @@ def run_ai(text, prompt, is_compliance=False, is_header=False, is_search=False, 
         return "⚠️ AI Connection Error."
 
 # ---------------------------
-# 3. CLEAN UNIVERSAL BID SCRAPER (STRICT FILTER)
+# 3. CLEAN UNIVERSAL BID SCRAPER (LOCKED)
 # ---------------------------
 def scrape_agency_bids(url):
     try:
@@ -58,41 +62,22 @@ def scrape_agency_bids(url):
         r = requests.get(url, headers=headers, timeout=15)
         soup = BeautifulSoup(r.text, 'html.parser')
         found_bids = []
-        
-        # Strict Noise list to remove sub-files and leave ONLY the Project Titles
-        noise = [
-            "report", "photos", "sheet", "cards", "calculations", "addendum", 
-            "plans", "manual", "package", "response", "geotechnical", 
-            "reference only", "asbestos", "structural", "supplemental", 
-            "specifications", "technical", "dwgs", "dsa"
-        ]
-
+        noise = ["report", "photos", "sheet", "cards", "calculations", "addendum", "plans", "manual", "package", "response", "geotechnical", "reference only", "asbestos", "structural", "supplemental", "specifications", "technical", "dwgs", "dsa"]
         for element in soup.find_all(['b', 'strong', 'a', 'td', 'li']):
             text = " ".join(element.get_text().split()).strip()
-            
-            # Check for Project IDs (24-, RFB-, etc.)
             is_id = any(p in text for p in ["21-", "22-", "23-", "24-", "25-", "RFB-IS-", "RFP-"])
-            
             if is_id:
-                # Capture LA County row text if it's a table link
                 if element.name == 'td' or element.name == 'a':
                     parent_row = element.find_parent('tr')
-                    if parent_row:
-                        text = " ".join(parent_row.get_text(separator=" ").split())
-                
-                # REJECT lines containing any noise words (Specifically for DGS cleanup)
+                    if parent_row: text = " ".join(parent_row.get_text(separator=" ").split())
                 if not any(n in text.lower() for n in noise):
-                    # Clean up strings from generic page navigation
                     clean_title = text.split("Powered by")[0].split("Contact Us")[0].strip()
-                    if len(clean_title) > 12:
-                        found_bids.append(f"📄 {clean_title}")
-        
-        return list(dict.fromkeys(found_bids)) if found_bids else ["❓ No primary project titles found."]
-    except:
-        return ["⚠️ Connection error."]
+                    if len(clean_title) > 12: found_bids.append(f"📄 {clean_title}")
+        return list(dict.fromkeys(found_bids)) if found_bids else ["❓ No primary titles found."]
+    except: return ["⚠️ Connection error."]
 
 # ---------------------------
-# 4. MAIN APP LOGIC (LOCKED UI)
+# 4. MAIN APP LOGIC (FIXED STATUS LOGIC)
 # ---------------------------
 st.title("🏛️ Public Sector Contracts AI")
 if st.button("🏠 Home / Reset App"):
@@ -118,14 +103,25 @@ if st.session_state.active_bid_text:
                 st.session_state.project_title = run_ai(doc, "Title?", is_header=True)
                 st.session_state.due_date = run_ai(doc, "Deadline?", is_header=True)
             st.rerun()
+
         st.subheader("🏛️ Project Snapshot")
-        status = st.session_state.status_flag.upper() if st.session_state.status_flag else "UNKNOWN"
-        if "CLOSED" in status:
-            st.error(f"● STATUS: {status} | Deadline: {st.session_state.due_date}")
+        
+        # --- HARD LOGIC OVERRIDE FOR 2026 PROJECT DEFENSE ---
+        status_raw = st.session_state.status_flag.upper()
+        date_raw = st.session_state.due_date
+        
+        # If the AI said OPEN but the date contains 2022, 2023, 2024, or 2025... force it to CLOSED.
+        is_past_year = any(yr in date_raw for yr in ["2021", "2022", "2023", "2024", "2025"])
+        
+        if "CLOSED" in status_raw or is_past_year:
+            st.error(f"● STATUS: CLOSED | DUE: {date_raw}")
         else:
-            st.success(f"● STATUS: {status} | DUE: {st.session_state.due_date}")
-        st.write(f"**🏛️ AGENCY:** {st.session_state.agency_name}"); st.write(f"**📄 BID NAME:** {st.session_state.project_title}")
+            st.success(f"● STATUS: OPEN | DUE: {date_raw}")
+            
+        st.write(f"**🏛️ AGENCY:** {st.session_state.agency_name}")
+        st.write(f"**📄 BID NAME:** {st.session_state.project_title}")
         st.divider()
+        
         b1, b2 = st.tabs(["📖 Scope of Work", "🛠️ Specifications"])
         with b1: st.info(run_ai(doc, "Summarize scope.", is_scope=True))
         with b2: st.success(run_ai(doc, "List ONLY IT hardware."))
@@ -144,7 +140,7 @@ else:
     with tab3:
         url_input = st.text_input("Agency URL:", key="agency_url")
         if url_input:
-            with st.spinner("Filtering for Bid Titles..."):
+            with st.spinner("Extracting Titles..."):
                 for b in scrape_agency_bids(url_input): st.write(b)
 
 with st.sidebar:
