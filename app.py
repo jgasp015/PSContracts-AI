@@ -4,7 +4,13 @@ from pypdf import PdfReader
 from bs4 import BeautifulSoup
 import os 
 from datetime import datetime
-import pytz 
+
+# Safety import for pytz to handle Railway build delays
+try:
+    import pytz
+except ImportError:
+    os.system('pip install pytz')
+    import pytz
 
 # ---------------------------
 # 0. PAGE CONFIGURATION (LOCKED)
@@ -37,6 +43,7 @@ def run_ai(text, prompt, is_compliance=False, is_header=False, is_search=False, 
     if not GROQ_API_KEY:
         return "⚠️ API Key missing."
     
+    # Get Real-Time California Time
     tz = pytz.timezone('US/Pacific')
     now = datetime.now(tz)
     current_time_str = now.strftime("%B %d, %Y %I:%M %p")
@@ -63,7 +70,7 @@ def run_ai(text, prompt, is_compliance=False, is_header=False, is_search=False, 
         return "⚠️ AI Error."
 
 # ---------------------------
-# 3. UNIVERSAL BID SCRAPER (AGGRESSIVE NOISE FILTER)
+# 3. UNIVERSAL BID SCRAPER (LOCKED)
 # ---------------------------
 def scrape_agency_bids(url):
     guidance = ["⚠️ **Dynamic Portal Detected.**", "📄 **Instruction:** Download the PDF from the portal and upload it to the **'Bid Document'** tab."]
@@ -76,23 +83,14 @@ def scrape_agency_bids(url):
         r = requests.get(url, headers=headers, timeout=15)
         soup = BeautifulSoup(r.text, 'html.parser')
         found_bids = []
-        
-        # UPDATED: More aggressive noise list to filter out extra lines seen in your screenshot
-        noise = [
-            "plans", "specifications", "addendum", "report", "manual", "package", 
-            "response", "sheet", "photos", "calculations", "asbestos", "dwgs", 
-            "dsa", "technical", "reference only", "site improvement", "geotechnical"
-        ]
+        noise = ["plans", "specifications", "addendum", "report", "manual", "package", "response", "sheet", "photos", "calculations", "asbestos", "dwgs", "dsa", "technical", "reference only"]
         
         for el in soup.find_all(['b', 'strong', 'a', 'li']):
             text = " ".join(el.get_text().split()).strip()
-            # Look for standard year patterns (21-, 22-, 23-, 24-, 25-)
             if any(text.startswith(yr) for yr in ["21-", "22-", "23-", "24-", "25-"]):
-                # Only add if the line DOES NOT contain noise keywords
                 if not any(n in text.lower() for n in noise):
-                    if len(text) > 12: # Avoid tiny ID-only fragments
+                    if len(text) > 12:
                         found_bids.append(f"📄 {text}")
-        
         return list(dict.fromkeys(found_bids)) if found_bids else guidance
     except: return guidance
 
