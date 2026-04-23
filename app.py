@@ -5,7 +5,7 @@ from bs4 import BeautifulSoup
 import os 
 from datetime import datetime
 
-# Safety import for pytz to handle Railway build delays
+# Safety import for pytz
 try:
     import pytz
 except ImportError:
@@ -35,7 +35,7 @@ def hard_reset_callback():
             del st.session_state[key]
 
 # ---------------------------
-# 2. THE ENGINE (REAL-TIME CLOCK)
+# 2. THE ENGINE (PLAIN ENGLISH TRANSLATION UPDATED)
 # ---------------------------
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 
@@ -43,7 +43,6 @@ def run_ai(text, prompt, is_compliance=False, is_header=False, is_search=False, 
     if not GROQ_API_KEY:
         return "⚠️ API Key missing."
     
-    # Get Real-Time California Time
     tz = pytz.timezone('US/Pacific')
     now = datetime.now(tz)
     current_time_str = now.strftime("%B %d, %Y %I:%M %p")
@@ -52,13 +51,22 @@ def run_ai(text, prompt, is_compliance=False, is_header=False, is_search=False, 
     ctx = text[:60000] 
     
     if is_compliance:
+        # Compliance still focuses on strict SLAs
         system_rules = "RULES: 1. BE DIRECT. 2. Extract SLAs. 3. SIMPLE ENGLISH."
     elif is_header:
-        system_rules = f"RULES: 1. Extract ONLY proper names. 2. Today is {current_time_str}. 3. If the document deadline has passed this exact time, say 'CLOSED'. 4. Provide a 1-sentence max response."
+        system_rules = f"RULES: 1. Extract ONLY proper names. 2. Today is {current_time_str}. 3. If deadline passed, say 'CLOSED'."
     elif is_search:
         system_rules = "You are a helpful assistant. Answer based on document."
     elif is_scope:
-        system_rules = "CORE INSTRUCTION: 1. ANALYZE whole text. 2. List QUANTITIES and TASKS. 3. NO repetition."
+        # NEW: The Translation Engine
+        system_rules = """
+        CORE INSTRUCTION: 
+        1. Act as a Plain English Translator for complex government contracts.
+        2. TRANSLATE all legal and technical jargon into words a non-lawyer would understand.
+        3. REPLACE words like 'Indemnification' with 'Protection against loss' or 'Solicitation' with 'Job Post'.
+        4. STRUCTURE: Provide a clear list of (a) What they want, (b) How many they want, and (c) What the winner must do.
+        5. AVOID 'walls of text'—use bullet points.
+        """
     else:
         system_rules = "CORE INSTRUCTION: 1. List physical hardware only. 2. Use bullets (*)."
     
@@ -73,24 +81,20 @@ def run_ai(text, prompt, is_compliance=False, is_header=False, is_search=False, 
 # 3. UNIVERSAL BID SCRAPER (LOCKED)
 # ---------------------------
 def scrape_agency_bids(url):
-    guidance = ["⚠️ **Dynamic Portal Detected.**", "📄 **Instruction:** Download the PDF from the portal and upload it to the **'Bid Document'** tab."]
+    guidance = ["⚠️ **Dynamic Portal Detected.**", "📄 **Instruction:** Download the PDF and upload to 'Bid Document'."]
     try:
         headers = {'User-Agent': 'Mozilla/5.0'}
         url_lower = url.lower()
         dynamic_portals = ["planetbids", "rampla.org", "caleprocure", "oc.gov", "bidnetdirect", "hacla.org", "gep.com"]
         if any(p in url_lower for p in dynamic_portals): return guidance
-        
-        r = requests.get(url, headers=headers, timeout=15)
-        soup = BeautifulSoup(r.text, 'html.parser')
+        r = requests.get(url, headers=headers, timeout=15); soup = BeautifulSoup(r.text, 'html.parser')
         found_bids = []
-        noise = ["plans", "specifications", "addendum", "report", "manual", "package", "response", "sheet", "photos", "calculations", "asbestos", "dwgs", "dsa", "technical", "reference only"]
-        
+        noise = ["plans", "specifications", "addendum", "report", "manual", "package", "response", "sheet"]
         for el in soup.find_all(['b', 'strong', 'a', 'li']):
             text = " ".join(el.get_text().split()).strip()
             if any(text.startswith(yr) for yr in ["21-", "22-", "23-", "24-", "25-"]):
                 if not any(n in text.lower() for n in noise):
-                    if len(text) > 12:
-                        found_bids.append(f"📄 {text}")
+                    if len(text) > 12: found_bids.append(f"📄 {text}")
         return list(dict.fromkeys(found_bids)) if found_bids else guidance
     except: return guidance
 
@@ -123,7 +127,6 @@ if st.session_state.get("active_bid_text"):
         st.subheader("🏛️ Project Snapshot")
         date_raw = st.session_state.due_date
         is_past_yr = any(yr in date_raw for yr in ["2021", "2022", "2023", "2024", "2025"])
-        
         if is_past_yr or "CLOSED" in st.session_state.status_flag.upper():
             st.error(f"● STATUS: CLOSED | DUE: {date_raw}")
         else:
@@ -132,8 +135,10 @@ if st.session_state.get("active_bid_text"):
         st.write(f"**🏛️ AGENCY:** {st.session_state.agency_name}")
         st.write(f"**📄 BID NAME:** {st.session_state.project_title}")
         st.divider()
-        st.subheader("📖 Bid Overview")
-        st.info(run_ai(doc, "Summarize the scope and quantities.", is_scope=True))
+        
+        # THIS SECTION NOW USES THE PLAIN ENGLISH TRANSLATION ENGINE
+        st.subheader("📖 Bid Overview (Simplified)")
+        st.info(run_ai(doc, "Translate this contract into plain English for a non-lawyer.", is_scope=True))
 
 else:
     tab1, tab2, tab3 = st.tabs(["📄 Bid Document", "📊 Compliance", "🔗 Agency URL"])
