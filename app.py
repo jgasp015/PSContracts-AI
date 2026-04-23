@@ -5,12 +5,12 @@ from bs4 import BeautifulSoup
 import os 
 
 # ---------------------------
-# 0. PAGE CONFIGURATION (TAB BRANDING)
+# 0. PAGE CONFIGURATION
 # ---------------------------
 st.set_page_config(page_title="Public Sector Contracts AI", page_icon="🏛️")
 
 # ---------------------------
-# 1. STATE & RESET (LOCKED)
+# 1. STATE & RESET (FIXED)
 # ---------------------------
 if "total_saved" not in st.session_state:
     st.session_state.total_saved = 480
@@ -20,13 +20,18 @@ if "analysis_mode" not in st.session_state:
     st.session_state.analysis_mode = "Standard"
 
 def hard_reset():
+    # Clear the URL input explicitly from session state
+    if "agency_url_input" in st.session_state:
+        st.session_state["agency_url_input"] = ""
+    
+    # Clear other active analysis states
     for key in list(st.session_state.keys()):
         if key != "total_saved":
             del st.session_state[key]
     st.rerun()
 
 # ---------------------------
-# 2. THE ENGINE (GROQ Llama 3.1)
+# 2. THE ENGINE (LOCKED)
 # ---------------------------
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 
@@ -40,11 +45,11 @@ def run_ai(text, prompt, is_compliance=False, is_header=False, is_search=False, 
     if is_compliance:
         system_rules = "RULES: 1. BE DIRECT. 2. Extract SLAs. 3. SIMPLE ENGLISH."
     elif is_header:
-        system_rules = f"RULES: 1. Extract ONLY the specific proper name. 2. Today is {today}. 3. If date is before 2026, include 'CLOSED'."
+        system_rules = f"RULES: 1. Extract ONLY proper names. 2. Today is {today}. 3. If BEFORE 2026, say 'CLOSED'."
     elif is_search:
         system_rules = "You are a helpful assistant. Answer based on document."
     elif is_scope:
-        system_rules = "CORE INSTRUCTION: 1. ANALYZE the whole text. 2. List specific QUANTITIES and ACTION TASKS. 3. Be descriptive."
+        system_rules = "CORE INSTRUCTION: 1. ANALYZE whole text. 2. List QUANTITIES and TASKS. 3. NO repetition."
     else:
         system_rules = "CORE INSTRUCTION: 1. List physical hardware only. 2. Use bullets (*)."
     
@@ -56,67 +61,52 @@ def run_ai(text, prompt, is_compliance=False, is_header=False, is_search=False, 
         return "⚠️ AI Connection Error."
 
 # ---------------------------
-# 3. UNIVERSAL BID SCRAPER (ROUTING LOGIC)
+# 3. ADVANCED UNIVERSAL SCRAPER (GEP SMART FIXED)
 # ---------------------------
 def scrape_agency_bids(url):
-    # Professional guidance for dynamic portals that block basic scrapers
     guidance = [
         "⚠️ **This site uses a dynamic/protected procurement portal.**",
         "📄 **Instruction:** To analyze a specific bid, please download the PDF solicitation directly from the portal and upload it to the **'Bid Document'** tab."
     ]
-    
     try:
         headers = {'User-Agent': 'Mozilla/5.0'}
         url_lower = url.lower()
         
-        # 🎯 LOGIC A: DYNAMIC PORTAL DETECTION (CATCH-ALL)
-        # Includes PlanetBids, RAMP, Cal eProcure, GEP SMART, BidNet, HACLA, and Orange County
-        dynamic_keywords = ["planetbids", "rampla.org", "caleprocure", "oc.gov", "bidnetdirect", "hacla.org", "gep.com", "opengov"]
-        if any(p in url_lower for p in dynamic_keywords):
+        # 🎯 DYNAMIC PORTAL DETECTION (Includes GEP SMART)
+        dynamic_portals = ["planetbids", "rampla.org", "caleprocure", "oc.gov", "bidnetdirect", "hacla.org", "gep.com"]
+        if any(p in url_lower for p in dynamic_portals):
             return guidance
 
-        # 🎯 LOGIC B: LA COUNTY ISD (Table-Row Strategy)
         if "la.ca.us" in url_lower and "dpw" not in url_lower:
-            r = requests.get(url, headers=headers, timeout=15)
-            soup = BeautifulSoup(r.text, 'html.parser')
+            r = requests.get(url, headers=headers, timeout=15); soup = BeautifulSoup(r.text, 'html.parser')
             found_bids = []
             for link in soup.find_all('a', href=True):
                 text = link.get_text().strip()
                 if any(p in text for p in ["RFB-", "RFP-", "BRC-"]):
-                    parent_row = link.find_parent('tr')
-                    full_text = " ".join(parent_row.get_text(separator=" ").split()) if parent_row else text
+                    row = link.find_parent('tr'); full_text = " ".join(row.get_text(separator=" ").split()) if row else text
                     found_bids.append(f"📄 {full_text}")
             return list(dict.fromkeys(found_bids)) if found_bids else guidance
-
-        # 🎯 LOGIC C: LA DPW (Pattern Recognition)
         elif "dpw.lacounty.gov" in url_lower:
-            r = requests.get(url, headers=headers, timeout=15)
-            soup = BeautifulSoup(r.text, 'html.parser')
+            r = requests.get(url, headers=headers, timeout=15); soup = BeautifulSoup(r.text, 'html.parser')
             found_bids = []
-            for element in soup.find_all(['b', 'strong', 'a', 'td']):
-                text = " ".join(element.get_text().split()).strip()
-                if any(p in text for p in ["BRC", "FCC", "RFP", "ID No."]):
-                    if len(text) > 15: found_bids.append(f"📄 {text}")
+            for el in soup.find_all(['b', 'strong', 'a', 'td']):
+                text = " ".join(el.get_text().split()).strip()
+                if any(p in text for p in ["BRC", "FCC", "RFP", "ID No."]) and len(text) > 15:
+                    found_bids.append(f"📄 {text}")
             return list(dict.fromkeys(found_bids)) if found_bids else guidance
-
-        # 🎯 LOGIC D: STANDARD SITES (DGS & Static HTML)
         else:
-            r = requests.get(url, headers=headers, timeout=15)
-            soup = BeautifulSoup(r.text, 'html.parser')
+            r = requests.get(url, headers=headers, timeout=15); soup = BeautifulSoup(r.text, 'html.parser')
             found_bids = []
             noise = ["plans", "specifications", "addendum", "report", "manual", "package", "response", "sheet", "photos", "calculations", "asbestos", "dwgs", "dsa", "technical"]
-            for element in soup.find_all(['b', 'strong', 'a', 'li']):
-                text = " ".join(element.get_text().split()).strip()
-                if any(text.startswith(yr) for yr in ["21-", "22-", "23-", "24-", "25-"]):
-                    if not any(n in text.lower() for n in noise):
-                        if len(text) > 15: found_bids.append(f"📄 {text}")
+            for el in soup.find_all(['b', 'strong', 'a', 'li']):
+                text = " ".join(el.get_text().split()).strip()
+                if any(text.startswith(yr) for yr in ["21-", "22-", "23-", "24-", "25-"]) and not any(n in text.lower() for n in noise):
+                    if len(text) > 15: found_bids.append(f"📄 {text}")
             return list(dict.fromkeys(found_bids)) if found_bids else guidance
-            
-    except:
-        return guidance
+    except: return guidance
 
 # ---------------------------
-# 4. MAIN APP INTERFACE
+# 4. MAIN APP LOGIC
 # ---------------------------
 st.title("🏛️ Public Sector Contracts AI")
 if st.button("🏠 Home / Reset App"):
@@ -126,9 +116,8 @@ st.divider()
 if st.session_state.active_bid_text:
     doc = st.session_state.active_bid_text
     st.subheader("🔍 Search Document")
-    user_q = st.text_input("Enter your query about this contract:", key="active_q")
-    if user_q:
-        st.write(f"**Answer:** {run_ai(doc, user_q, is_search=True)}")
+    user_q = st.text_input("Enter your query:", key="active_q")
+    if user_q: st.write(f"**Answer:** {run_ai(doc, user_q, is_search=True)}")
     st.divider()
     
     if st.session_state.analysis_mode == "Reporting":
@@ -137,47 +126,36 @@ if st.session_state.active_bid_text:
     else:
         if not st.session_state.get("agency_name"):
             with st.status("🏗️ Analyzing..."):
-                st.session_state.status_flag = run_ai(doc, "Is the bid OPEN or CLOSED?", is_header=True)
+                st.session_state.status_flag = run_ai(doc, "OPEN or CLOSED?", is_header=True)
                 st.session_state.agency_name = run_ai(doc, "Agency proper name?", is_header=True)
                 st.session_state.project_title = run_ai(doc, "Project proper name?", is_header=True)
                 st.session_state.due_date = run_ai(doc, "Deadline date?", is_header=True)
             st.rerun()
 
         st.subheader("🏛️ Project Snapshot")
-        status_raw = st.session_state.status_flag.upper()
         date_raw = st.session_state.due_date
-        is_past_year = any(yr in date_raw for yr in ["2021", "2022", "2023", "2024", "2025"])
-        is_due_today = "April 22, 2026" in date_raw
-        
-        if (is_past_year or "CLOSED" in status_raw) and not is_due_today:
+        is_past = any(yr in date_raw for yr in ["2021", "2022", "2023", "2024", "2025"])
+        if is_past or "CLOSED" in st.session_state.status_flag.upper():
             st.error(f"● STATUS: CLOSED | DUE: {date_raw}")
         else:
             st.success(f"● STATUS: OPEN | DUE: {date_raw}")
-            
         st.write(f"**🏛️ AGENCY:** {st.session_state.agency_name}"); st.write(f"**📄 BID NAME:** {st.session_state.project_title}")
-        st.divider()
-        st.subheader("📖 Bid Overview")
+        st.divider(); st.subheader("📖 Bid Overview")
         st.info(run_ai(doc, "Summarize the scope and quantities.", is_scope=True))
-
 else:
     tab1, tab2, tab3 = st.tabs(["📄 Bid Document", "📊 Compliance", "🔗 Agency URL"])
     with tab1:
         up = st.file_uploader("Upload Bid PDF", type="pdf", key="u1")
-        if up:
-            st.session_state.active_bid_text = "\n".join([p.extract_text() for p in PdfReader(up).pages])
-            st.session_state.analysis_mode = "Standard"; st.rerun()
+        if up: st.session_state.active_bid_text = "\n".join([p.extract_text() for p in PdfReader(up).pages]); st.session_state.analysis_mode = "Standard"; st.rerun()
     with tab2:
         up_c = st.file_uploader("Upload Contract PDF", type="pdf", key="u2")
-        if up_c:
-            st.session_state.active_bid_text = "\n".join([p.extract_text() for p in PdfReader(up_c).pages])
-            st.session_state.analysis_mode = "Reporting"; st.rerun()
+        if up_c: st.session_state.active_bid_text = "\n".join([p.extract_text() for p in PdfReader(up_c).pages]); st.session_state.analysis_mode = "Reporting"; st.rerun()
     with tab3:
-        url_input = st.text_input("Agency URL:", key="agency_url")
+        # FIXED: Assigned a key to allow the Reset Button to clear this field
+        url_input = st.text_input("Agency URL:", key="agency_url_input")
         if url_input:
-            with st.spinner("Analyzing Agency Infrastructure..."):
+            with st.spinner("Analyzing Infrastructure..."):
                 for b in scrape_agency_bids(url_input): st.write(b)
 
 with st.sidebar:
-    st.header("Project Performance")
-    st.metric("Total Est. Time Saved", f"{st.session_state.total_saved} mins")
-    st.caption("UCR Master of Science - Jeffrey Gaspar")
+    st.header("Project Performance"); st.metric("Total Est. Time Saved", f"{st.session_state.total_saved} mins"); st.caption("UCR Master of Science - Jeffrey Gaspar")
