@@ -10,21 +10,22 @@ import os
 st.set_page_config(page_title="Public Sector Contracts AI", page_icon="🏛️")
 
 # ---------------------------
-# 1. STATE & RESET (RELIABLE CALLBACK FIX)
+# 1. STATE & RESET (THE DYNAMIC KEY STRATEGY)
 # ---------------------------
 if "total_saved" not in st.session_state:
     st.session_state.total_saved = 480
 if "active_bid_text" not in st.session_state:
     st.session_state.active_bid_text = None
+# We use a version number to force-reset the text widget
+if "reset_ver" not in st.session_state:
+    st.session_state.reset_ver = 0
 
-# This function is now an 'on_click' callback
 def hard_reset_callback():
-    # 1. Explicitly clear the widget key first
-    if "agency_url_input" in st.session_state:
-        st.session_state["agency_url_input"] = ""
+    # 1. Increment version to force-kill the old text widget
+    st.session_state.reset_ver += 1
     
-    # 2. Clear all other session data except performance metrics
-    keys_to_keep = ["total_saved"]
+    # 2. Clear all analysis data
+    keys_to_keep = ["total_saved", "reset_ver"]
     for key in list(st.session_state.keys()):
         if key not in keys_to_keep:
             del st.session_state[key]
@@ -89,7 +90,6 @@ def scrape_agency_bids(url):
 # 4. MAIN APP LOGIC
 # ---------------------------
 st.title("🏛️ Public Sector Contracts AI")
-# Use the function as an on_click callback for instant reset
 st.button("🏠 Home / Reset App", on_click=hard_reset_callback)
 st.divider()
 
@@ -139,7 +139,8 @@ else:
             st.session_state.analysis_mode = "Reporting"
             st.rerun()
     with tab3:
-        url_input = st.text_input("Agency URL:", key="agency_url_input")
+        # THE FIX: Changing the key every time we reset ensures the box is wiped clean
+        url_input = st.text_input("Agency URL:", key=f"url_input_v{st.session_state.reset_ver}")
         if url_input:
             with st.spinner("Analyzing Infrastructure..."):
                 for b in scrape_agency_bids(url_input): st.write(b)
