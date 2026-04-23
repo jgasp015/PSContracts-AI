@@ -56,20 +56,21 @@ def run_ai(text, prompt, is_compliance=False, is_header=False, is_search=False, 
         return "⚠️ AI Connection Error."
 
 # ---------------------------
-# 3. UNIVERSAL BID SCRAPER (FIXED BIDNET DETECTION)
+# 3. UNIVERSAL BID SCRAPER (HACLA DETECTION ADDED)
 # ---------------------------
 def scrape_agency_bids(url):
     try:
         headers = {'User-Agent': 'Mozilla/5.0'}
         url_lower = url.lower()
         
-        # 🎯 LOGIC A: DYNAMIC PORTAL DETECTION (Prioritized)
+        # 🎯 LOGIC A: DYNAMIC PORTAL DETECTION (Includes HACLA)
         dynamic_portals = {
             "planetbids": "PlanetBids",
             "rampla.org": "RAMP LA",
             "caleprocure.ca.gov": "Cal eProcure (CSCR)",
             "oc.gov": "Orange County OpenGov Portal",
-            "bidnetdirect": "BidNet Direct (Washington Purchasing Group)"
+            "bidnetdirect": "BidNet Direct",
+            "hacla.org": "HACLA (Housing Authority of the City of Los Angeles)"
         }
         
         for key, name in dynamic_portals.items():
