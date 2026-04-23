@@ -3,14 +3,16 @@ import requests
 from pypdf import PdfReader
 from bs4 import BeautifulSoup
 import os 
+from datetime import datetime
+import pytz # Standard for timezone handling
 
 # ---------------------------
-# 0. PAGE CONFIGURATION
+# 0. PAGE CONFIGURATION (LOCKED)
 # ---------------------------
 st.set_page_config(page_title="Public Sector Contracts AI", page_icon="🏛️")
 
 # ---------------------------
-# 1. STATE & RESET (DYNAMIC KEY FIXED)
+# 1. STATE & RESET (LOCKED)
 # ---------------------------
 if "total_saved" not in st.session_state:
     st.session_state.total_saved = 480
@@ -27,22 +29,27 @@ def hard_reset_callback():
             del st.session_state[key]
 
 # ---------------------------
-# 2. THE ENGINE (STRICT HEADER LOGIC)
+# 2. THE ENGINE (REAL-TIME CLOCK UPDATED)
 # ---------------------------
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 
 def run_ai(text, prompt, is_compliance=False, is_header=False, is_search=False, is_scope=False):
     if not GROQ_API_KEY:
         return "⚠️ API Key missing."
+    
+    # NEW: Get Real-Time California Time
+    tz = pytz.timezone('US/Pacific')
+    now = datetime.now(tz)
+    current_time_str = now.strftime("%B %d, %Y %I:%M %p")
+    
     headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
     ctx = text[:60000] 
-    today = "April 22, 2026"
     
     if is_compliance:
         system_rules = "RULES: 1. BE DIRECT. 2. Extract SLAs. 3. SIMPLE ENGLISH."
     elif is_header:
-        # STRICT FIX: Instructing AI to ignore institutional headers and find the unique project name
-        system_rules = f"RULES: 1. Extract ONLY the unique proper name or title. 2. IGNORE repetitive headers like 'ISD' or 'LA County'. 3. If the date is before 2026, the status is 'CLOSED'. 4. Provide a 1-sentence max response."
+        # UPDATED: AI now knows the exact minute it is currently
+        system_rules = f"RULES: 1. Extract ONLY proper names. 2. Today is {current_time_str}. 3. If the document deadline has passed this exact time, say 'CLOSED'. 4. Provide a 1-sentence max response."
     elif is_search:
         system_rules = "You are a helpful assistant. Answer based on document."
     elif is_scope:
@@ -77,7 +84,7 @@ def scrape_agency_bids(url):
     except: return guidance
 
 # ---------------------------
-# 4. MAIN APP LOGIC (STRICT UI)
+# 4. MAIN APP LOGIC (REAL-TIME STATUS UPDATED)
 # ---------------------------
 st.title("🏛️ Public Sector Contracts AI")
 st.button("🏠 Home / Reset App", on_click=hard_reset_callback)
@@ -99,20 +106,24 @@ if st.session_state.get("active_bid_text"):
                 st.session_state.status_flag = run_ai(doc, "Status: OPEN or CLOSED?", is_header=True)
                 st.session_state.agency_name = run_ai(doc, "What is the Government Agency name?", is_header=True)
                 st.session_state.project_title = run_ai(doc, "What is the specific Project Title/Bid Name?", is_header=True)
-                st.session_state.due_date = run_ai(doc, "When is the deadline date?", is_header=True)
+                st.session_state.due_date = run_ai(doc, "When is the deadline date and time?", is_header=True)
             st.rerun()
 
         st.subheader("🏛️ Project Snapshot")
-        date_raw = st.session_state.due_date
-        # Check for past years in the extracted date string
-        is_past = any(yr in date_raw for yr in ["2021", "2022", "2023", "2024", "2025"])
         
-        if is_past or "CLOSED" in st.session_state.status_flag.upper():
-            st.error(f"● STATUS: CLOSED | DUE: {date_raw}")
+        # Real-time Comparison Logic
+        tz = pytz.timezone('US/Pacific')
+        current_dt = datetime.now(tz)
+        status_raw = st.session_state.status_flag.upper()
+        
+        # If the AI says it's CLOSED, or if the year is clearly in the past
+        is_past_year = any(yr in st.session_state.due_date for yr in ["2021", "2022", "2023", "2024", "2025"])
+        
+        if is_past_year or "CLOSED" in status_raw:
+            st.error(f"● STATUS: CLOSED | DUE: {st.session_state.due_date}")
         else:
-            st.success(f"● STATUS: OPEN | DUE: {date_raw}")
+            st.success(f"● STATUS: OPEN | DUE: {st.session_state.due_date}")
         
-        # Displaying the 3 clean data points requested
         st.write(f"**🏛️ AGENCY:** {st.session_state.agency_name}")
         st.write(f"**📄 BID NAME:** {st.session_state.project_title}")
         st.divider()
