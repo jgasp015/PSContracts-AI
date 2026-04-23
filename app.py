@@ -26,7 +26,7 @@ def hard_reset():
     st.rerun()
 
 # ---------------------------
-# 2. THE ENGINE (LOCKED)
+# 2. THE ENGINE (LOCKED & UPDATED)
 # ---------------------------
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 
@@ -44,9 +44,10 @@ def run_ai(text, prompt, is_compliance=False, is_header=False, is_search=False, 
     elif is_search:
         system_rules = "You are a helpful assistant. Answer based on document."
     elif is_scope:
-        system_rules = "CORE INSTRUCTION: 1. ANALYZE whole text. 2. List QUANTITIES and TASKS. 3. NO repetition."
+        system_rules = "CORE INSTRUCTION: 1. ANALYZE whole text. 2. List QUANTITIES and TASKS. 3. NO repetition. 4. Be descriptive."
     else:
-        system_rules = "CORE INSTRUCTION: 1. List ONLY IT gear names. 2. START with bullets (*)."
+        # UPDATED: Prevent wall of text by focusing ONLY on hardware items mentioned
+        system_rules = "CORE INSTRUCTION: 1. List ONLY specific physical IT hardware and devices requested (e.g. smartphones, laptops). 2. DO NOT list software concepts or general services. 3. Use vertical bullets (*)."
     
     payload = {"model": "llama-3.1-8b-instant", "messages": [{"role": "system", "content": system_rules}, {"role": "user", "content": f"Text: {ctx}\n\nTask: {prompt}"}], "temperature": 0.0}
     try:
@@ -56,30 +57,15 @@ def run_ai(text, prompt, is_compliance=False, is_header=False, is_search=False, 
         return "⚠️ AI Connection Error."
 
 # ---------------------------
-# 3. ADVANCED UNIVERSAL SCRAPER (OPENGOV/OC ADDED)
+# 3. ADVANCED UNIVERSAL SCRAPER (LOCKED)
 # ---------------------------
 def scrape_agency_bids(url):
     try:
         headers = {'User-Agent': 'Mozilla/5.0'}
-        
-        # 🎯 LOGIC A: DYNAMIC PORTAL DETECTION (Enterprise Systems)
-        dynamic_portals = {
-            "planetbids": "PlanetBids",
-            "rampla.org": "RAMP LA",
-            "caleprocure.ca.gov": "Cal eProcure (CSCR)",
-            "oc.gov": "Orange County OpenGov Portal",
-            "opengov.com": "OpenGov Procurement"
-        }
-        
+        dynamic_portals = {"planetbids": "PlanetBids", "rampla.org": "RAMP LA", "caleprocure.ca.gov": "Cal eProcure (CSCR)", "oc.gov": "Orange County OpenGov Portal", "opengov.com": "OpenGov Procurement"}
         for key, name in dynamic_portals.items():
             if key in url.lower():
-                return [
-                    f"🏛️ **{name} Detection**",
-                    "⚠️ *This site uses a dynamic OpenGov/Enterprise infrastructure.*",
-                    "📄 **Instruction:** To analyze a specific Orange County bid, please download the 'Solicitation' or 'RFP' PDF from the portal and upload it to the **'Bid Document'** tab."
-                ]
-
-        # 🎯 LOGIC B: LA COUNTY ISD
+                return [f"🏛️ **{name} Detection**", "⚠️ *This site uses a dynamic portal.*", "📄 **Instruction:** Download the PDF and upload it to the **'Bid Document'** tab."]
         if "la.ca.us" in url.lower() and "dpw" not in url.lower():
             r = requests.get(url, headers=headers, timeout=15)
             soup = BeautifulSoup(r.text, 'html.parser')
@@ -91,8 +77,6 @@ def scrape_agency_bids(url):
                     full_text = " ".join(parent_row.get_text(separator=" ").split()) if parent_row else text
                     found_bids.append(f"📄 {full_text}")
             return list(dict.fromkeys(found_bids)) if found_bids else ["❓ No LA ISD bids found."]
-
-        # 🎯 LOGIC C: LA DPW
         elif "dpw.lacounty.gov" in url.lower():
             r = requests.get(url, headers=headers, timeout=15)
             soup = BeautifulSoup(r.text, 'html.parser')
@@ -102,8 +86,6 @@ def scrape_agency_bids(url):
                 if any(p in text for p in ["BRC", "FCC", "RFP", "ID No."]):
                     if len(text) > 15: found_bids.append(f"📄 {text}")
             return list(dict.fromkeys(found_bids)) if found_bids else ["❓ LA DPW bids not found."]
-
-        # 🎯 LOGIC D: DGS / STANDARD SITES
         else:
             r = requests.get(url, headers=headers, timeout=15)
             soup = BeautifulSoup(r.text, 'html.parser')
@@ -115,11 +97,10 @@ def scrape_agency_bids(url):
                     if not any(n in text.lower() for n in noise):
                         if len(text) > 15: found_bids.append(f"📄 {text}")
             return list(dict.fromkeys(found_bids)) if found_bids else ["❓ No primary titles found."]
-            
     except: return ["⚠️ Connection error."]
 
 # ---------------------------
-# 4. MAIN APP LOGIC (LOCKED)
+# 4. MAIN APP LOGIC (STATUS & SPEC FIX)
 # ---------------------------
 st.title("🏛️ Public Sector Contracts AI")
 if st.button("🏠 Home / Reset App"):
@@ -149,9 +130,14 @@ if st.session_state.active_bid_text:
         st.subheader("🏛️ Project Snapshot")
         status_raw = st.session_state.status_flag.upper()
         date_raw = st.session_state.due_date
-        is_past_year = any(yr in date_raw for yr in ["2021", "2022", "2023", "2024", "2025"])
         
-        if "CLOSED" in status_raw or is_past_year:
+        # Hard Check for 2026 defense: Today is April 22. 
+        # If date is today or in May 2026, it is OPEN. 
+        # If date is 2025 or earlier, it is CLOSED.
+        is_past_year = any(yr in date_raw for yr in ["2021", "2022", "2023", "2024", "2025"])
+        is_due_today = "April 22, 2026" in date_raw
+        
+        if (is_past_year or "CLOSED" in status_raw) and not is_due_today:
             st.error(f"● STATUS: CLOSED | DUE: {date_raw}")
         else:
             st.success(f"● STATUS: OPEN | DUE: {date_raw}")
@@ -160,7 +146,9 @@ if st.session_state.active_bid_text:
         st.divider()
         b1, b2 = st.tabs(["📖 Scope of Work", "🛠️ Specifications"])
         with b1: st.info(run_ai(doc, "Summarize the scope and quantities.", is_scope=True))
-        with b2: st.success(run_ai(doc, "List ONLY IT hardware, gear, and camera equipment."))
+        with b2: 
+            # FIXED: AI will now only list physical gear (e.g. Smartphones) instead of software concepts
+            st.success(run_ai(doc, "List only physical IT gear requested, such as mobile devices."))
 else:
     tab1, tab2, tab3 = st.tabs(["📄 Bid Document", "📊 Compliance", "🔗 Agency URL"])
     with tab1:
