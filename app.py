@@ -56,30 +56,23 @@ def run_ai(text, prompt, is_compliance=False, is_header=False, is_search=False, 
         return "⚠️ AI Connection Error."
 
 # ---------------------------
-# 3. UNIVERSAL BID SCRAPER (HACLA DETECTION ADDED)
+# 3. UNIVERSAL BID SCRAPER (WITH UNIVERSAL CATCH-ALL)
 # ---------------------------
 def scrape_agency_bids(url):
+    # Standard guidance for dynamic/unreadable portals
+    guidance = [
+        "⚠️ **This site uses a dynamic/protected procurement portal.**",
+        "📄 **Instruction:** To analyze a specific bid, please download the PDF solicitation directly from the portal and upload it to the **'Bid Document'** tab."
+    ]
+    
     try:
         headers = {'User-Agent': 'Mozilla/5.0'}
         url_lower = url.lower()
         
-        # 🎯 LOGIC A: DYNAMIC PORTAL DETECTION (Includes HACLA)
-        dynamic_portals = {
-            "planetbids": "PlanetBids",
-            "rampla.org": "RAMP LA",
-            "caleprocure.ca.gov": "Cal eProcure (CSCR)",
-            "oc.gov": "Orange County OpenGov Portal",
-            "bidnetdirect": "BidNet Direct",
-            "hacla.org": "HACLA (Housing Authority of the City of Los Angeles)"
-        }
-        
-        for key, name in dynamic_portals.items():
-            if key in url_lower:
-                return [
-                    f"🏛️ **{name} Detection**",
-                    "⚠️ *This site uses a dynamic/protected procurement portal.*",
-                    "📄 **Instruction:** To analyze a specific bid, please download the PDF solicitation directly from the portal and upload it to the **'Bid Document'** tab."
-                ]
+        # 🎯 LOGIC A: DYNAMIC PORTAL KEYWORD DETECTION
+        dynamic_portals = ["planetbids", "rampla.org", "caleprocure", "oc.gov", "bidnetdirect", "hacla.org"]
+        if any(p in url_lower for p in dynamic_portals):
+            return guidance
 
         # 🎯 LOGIC B: LA COUNTY ISD
         if "la.ca.us" in url_lower and "dpw" not in url_lower:
@@ -92,7 +85,7 @@ def scrape_agency_bids(url):
                     parent_row = link.find_parent('tr')
                     full_text = " ".join(parent_row.get_text(separator=" ").split()) if parent_row else text
                     found_bids.append(f"📄 {full_text}")
-            return list(dict.fromkeys(found_bids)) if found_bids else ["❓ No LA ISD bids found."]
+            return list(dict.fromkeys(found_bids)) if found_bids else guidance
 
         # 🎯 LOGIC C: LA DPW
         elif "dpw.lacounty.gov" in url_lower:
@@ -103,7 +96,7 @@ def scrape_agency_bids(url):
                 text = " ".join(element.get_text().split()).strip()
                 if any(p in text for p in ["BRC", "FCC", "RFP", "ID No."]):
                     if len(text) > 15: found_bids.append(f"📄 {text}")
-            return list(dict.fromkeys(found_bids)) if found_bids else ["❓ LA DPW bids not found."]
+            return list(dict.fromkeys(found_bids)) if found_bids else guidance
 
         # 🎯 LOGIC D: STANDARD SITES (DGS, etc.)
         else:
@@ -116,9 +109,11 @@ def scrape_agency_bids(url):
                 if any(text.startswith(yr) for yr in ["21-", "22-", "23-", "24-", "25-"]):
                     if not any(n in text.lower() for n in noise):
                         if len(text) > 15: found_bids.append(f"📄 {text}")
-            return list(dict.fromkeys(found_bids)) if found_bids else ["❓ No primary titles found."]
+            return list(dict.fromkeys(found_bids)) if found_bids else guidance
             
-    except: return ["⚠️ Connection error."]
+    except:
+        # UNIVERSAL CATCH-ALL: If connection fails or site blocks scraper, show guidance
+        return guidance
 
 # ---------------------------
 # 4. MAIN APP LOGIC (LOCKED UI)
