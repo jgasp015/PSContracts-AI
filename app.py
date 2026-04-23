@@ -56,23 +56,19 @@ def run_ai(text, prompt, is_compliance=False, is_header=False, is_search=False, 
         return "⚠️ AI Connection Error."
 
 # ---------------------------
-# 3. ADVANCED MULTI-AGENCY SCRAPER (RAMP LA ADDED)
+# 3. ADVANCED UNIVERSAL SCRAPER (LADPW ADDED)
 # ---------------------------
 def scrape_agency_bids(url):
     try:
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
         
-        # 🎯 LOGIC A: DYNAMIC PORTAL DETECTION (PlanetBids & RAMP LA)
-        if "planetbids" in url.lower() or "rampla.org" in url.lower():
-            portal_name = "RAMP LA" if "rampla" in url.lower() else "PlanetBids"
-            return [
-                f"🏛️ **{portal_name} Portal Detected**",
-                "⚠️ *This agency uses a protected JavaScript-heavy portal.*",
-                "📄 Please download the 'Solicitation PDF' or 'Scope' directly from the portal and upload it to the **'Bid Document'** tab for AI analysis."
-            ]
+        # 🎯 LOGIC A: DYNAMIC PORTAL DETECTION
+        if any(p in url.lower() for p in ["planetbids", "rampla.org"]):
+            portal = "RAMP LA" if "rampla" in url.lower() else "PlanetBids"
+            return [f"🏛️ **{portal} Portal Detected**", "⚠️ *This agency uses a protected JavaScript-heavy portal.*", "📄 Please download the 'Solicitation PDF' directly from the portal and upload it to the **'Bid Document'** tab for AI analysis."]
 
-        # 🎯 LOGIC B: LA COUNTY (Table-Row Based)
-        elif "la.ca.us" in url.lower():
+        # 🎯 LOGIC B: LA COUNTY ISD (Table-Row Based)
+        elif "camisvr" in url.lower() or "lacobids" in url.lower():
             r = requests.get(url, headers=headers, timeout=15)
             soup = BeautifulSoup(r.text, 'html.parser')
             found_bids = []
@@ -82,9 +78,22 @@ def scrape_agency_bids(url):
                     parent_row = link.find_parent('tr')
                     full_text = " ".join(parent_row.get_text(separator=" ").split()) if parent_row else text
                     found_bids.append(f"📄 {full_text}")
-            return list(dict.fromkeys(found_bids)) if found_bids else ["❓ No LA bids found."]
+            return list(dict.fromkeys(found_bids)) if found_bids else ["❓ No LA ISD bids found."]
 
-        # 🎯 LOGIC C: DGS / STANDARD GOV SITES
+        # 🎯 LOGIC C: LA DPW (Pattern + Content Logic)
+        elif "dpw.lacounty.gov" in url.lower():
+            r = requests.get(url, headers=headers, timeout=15)
+            soup = BeautifulSoup(r.text, 'html.parser')
+            found_bids = []
+            # DPW uses Project IDs like BRC, FCC, or specific numeric IDs
+            for element in soup.find_all(['b', 'strong', 'a', 'td']):
+                text = " ".join(element.get_text().split()).strip()
+                if any(p in text for p in ["BRC", "FCC", "RFP", "ID No."]):
+                    if len(text) > 15: # Avoid tiny button text
+                        found_bids.append(f"📄 {text}")
+            return list(dict.fromkeys(found_bids)) if found_bids else ["❓ LA DPW portal identified, but no active bid titles found in the static view."]
+
+        # 🎯 LOGIC D: DGS / STANDARD GOV SITES
         else:
             r = requests.get(url, headers=headers, timeout=15)
             soup = BeautifulSoup(r.text, 'html.parser')
@@ -94,12 +103,10 @@ def scrape_agency_bids(url):
                 text = " ".join(element.get_text().split()).strip()
                 if any(text.startswith(yr) for yr in ["21-", "22-", "23-", "24-", "25-"]):
                     if not any(n in text.lower() for n in noise):
-                        if len(text) > 15:
-                            found_bids.append(f"📄 {text}")
+                        if len(text) > 15: found_bids.append(f"📄 {text}")
             return list(dict.fromkeys(found_bids)) if found_bids else ["❓ No primary titles found."]
             
-    except:
-        return ["⚠️ Connection error."]
+    except: return ["⚠️ Connection error."]
 
 # ---------------------------
 # 4. MAIN APP LOGIC (LOCKED)
@@ -139,10 +146,8 @@ if st.session_state.active_bid_text:
         else:
             st.success(f"● STATUS: OPEN | DUE: {date_raw}")
             
-        st.write(f"**🏛️ AGENCY:** {st.session_state.agency_name}")
-        st.write(f"**📄 BID NAME:** {st.session_state.project_title}")
+        st.write(f"**🏛️ AGENCY:** {st.session_state.agency_name}"); st.write(f"**📄 BID NAME:** {st.session_state.project_title}")
         st.divider()
-        
         b1, b2 = st.tabs(["📖 Scope of Work", "🛠️ Specifications"])
         with b1: st.info(run_ai(doc, "Summarize the scope and quantities.", is_scope=True))
         with b2: st.success(run_ai(doc, "List ONLY IT hardware, gear, and camera equipment."))
