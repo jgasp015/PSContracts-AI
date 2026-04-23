@@ -5,7 +5,7 @@ from bs4 import BeautifulSoup
 import os 
 
 # ---------------------------
-# 0. PAGE CONFIGURATION (LOCKED)
+# 0. PAGE CONFIGURATION (PROFESSIONAL BRANDING)
 # ---------------------------
 st.set_page_config(page_title="Public Sector Contracts AI", page_icon="🏛️")
 
@@ -56,19 +56,29 @@ def run_ai(text, prompt, is_compliance=False, is_header=False, is_search=False, 
         return "⚠️ AI Connection Error."
 
 # ---------------------------
-# 3. ADVANCED UNIVERSAL SCRAPER (LADPW ADDED)
+# 3. ADVANCED UNIVERSAL SCRAPER (CAL EPROCURE ADDED)
 # ---------------------------
 def scrape_agency_bids(url):
     try:
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+        headers = {'User-Agent': 'Mozilla/5.0'}
         
-        # 🎯 LOGIC A: DYNAMIC PORTAL DETECTION
-        if any(p in url.lower() for p in ["planetbids", "rampla.org"]):
-            portal = "RAMP LA" if "rampla" in url.lower() else "PlanetBids"
-            return [f"🏛️ **{portal} Portal Detected**", "⚠️ *This agency uses a protected JavaScript-heavy portal.*", "📄 Please download the 'Solicitation PDF' directly from the portal and upload it to the **'Bid Document'** tab for AI analysis."]
+        # 🎯 LOGIC A: DYNAMIC ENTERPRISE PORTALS (PlanetBids, RAMP, Cal eProcure)
+        dynamic_portals = {
+            "planetbids": "PlanetBids",
+            "rampla.org": "RAMP LA",
+            "caleprocure.ca.gov": "Cal eProcure (CSCR)"
+        }
+        
+        for key, name in dynamic_portals.items():
+            if key in url.lower():
+                return [
+                    f"🏛️ **{name} Portal Detected**",
+                    "⚠️ *This site uses a high-security Enterprise database (PeopleSoft/Dynamic JS).*",
+                    "📄 **Instruction:** To analyze a specific bid from this portal, please download the 'Event Details' or 'Solicitation' PDF and upload it to the **'Bid Document'** tab."
+                ]
 
-        # 🎯 LOGIC B: LA COUNTY ISD (Table-Row Based)
-        elif "camisvr" in url.lower() or "lacobids" in url.lower():
+        # 🎯 LOGIC B: LA COUNTY (Table-Row Based)
+        if "la.ca.us" in url.lower() and "dpw" not in url.lower():
             r = requests.get(url, headers=headers, timeout=15)
             soup = BeautifulSoup(r.text, 'html.parser')
             found_bids = []
@@ -80,20 +90,18 @@ def scrape_agency_bids(url):
                     found_bids.append(f"📄 {full_text}")
             return list(dict.fromkeys(found_bids)) if found_bids else ["❓ No LA ISD bids found."]
 
-        # 🎯 LOGIC C: LA DPW (Pattern + Content Logic)
+        # 🎯 LOGIC C: LA DPW (Pattern Based)
         elif "dpw.lacounty.gov" in url.lower():
             r = requests.get(url, headers=headers, timeout=15)
             soup = BeautifulSoup(r.text, 'html.parser')
             found_bids = []
-            # DPW uses Project IDs like BRC, FCC, or specific numeric IDs
             for element in soup.find_all(['b', 'strong', 'a', 'td']):
                 text = " ".join(element.get_text().split()).strip()
                 if any(p in text for p in ["BRC", "FCC", "RFP", "ID No."]):
-                    if len(text) > 15: # Avoid tiny button text
-                        found_bids.append(f"📄 {text}")
-            return list(dict.fromkeys(found_bids)) if found_bids else ["❓ LA DPW portal identified, but no active bid titles found in the static view."]
+                    if len(text) > 15: found_bids.append(f"📄 {text}")
+            return list(dict.fromkeys(found_bids)) if found_bids else ["❓ LA DPW bids not found in static view."]
 
-        # 🎯 LOGIC D: DGS / STANDARD GOV SITES
+        # 🎯 LOGIC D: DGS / STANDARD SITES (Pattern Based)
         else:
             r = requests.get(url, headers=headers, timeout=15)
             soup = BeautifulSoup(r.text, 'html.parser')
