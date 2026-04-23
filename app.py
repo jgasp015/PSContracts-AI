@@ -26,7 +26,7 @@ def hard_reset():
     st.rerun()
 
 # ---------------------------
-# 2. THE ENGINE (LOCKED & UPDATED)
+# 2. THE ENGINE (LOCKED & UI REFINED)
 # ---------------------------
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 
@@ -40,14 +40,14 @@ def run_ai(text, prompt, is_compliance=False, is_header=False, is_search=False, 
     if is_compliance:
         system_rules = "RULES: 1. BE DIRECT. 2. Extract SLAs. 3. SIMPLE ENGLISH."
     elif is_header:
-        system_rules = f"RULES: 1. 5 words or less. 2. Today is {today}. 3. If BEFORE 2026, say 'CLOSED'."
+        # REFINED: Stronger instructions to get the actual name instead of generic 'Yes' or 'Request for Bid'
+        system_rules = f"RULES: 1. Extract the specific proper name only. 2. If Today is {today} and document date is before 2026, say 'CLOSED'. 3. Avoid generic terms like 'Agency' or 'RFP'."
     elif is_search:
         system_rules = "You are a helpful assistant. Answer based on document."
     elif is_scope:
         system_rules = "CORE INSTRUCTION: 1. ANALYZE whole text. 2. List QUANTITIES and TASKS. 3. NO repetition. 4. Be descriptive."
     else:
-        # UPDATED: Prevent wall of text by focusing ONLY on hardware items mentioned
-        system_rules = "CORE INSTRUCTION: 1. List ONLY specific physical IT hardware and devices requested (e.g. smartphones, laptops). 2. DO NOT list software concepts or general services. 3. Use vertical bullets (*)."
+        system_rules = "CORE INSTRUCTION: 1. List physical hardware only. 2. Use bullets (*)."
     
     payload = {"model": "llama-3.1-8b-instant", "messages": [{"role": "system", "content": system_rules}, {"role": "user", "content": f"Text: {ctx}\n\nTask: {prompt}"}], "temperature": 0.0}
     try:
@@ -100,7 +100,7 @@ def scrape_agency_bids(url):
     except: return ["⚠️ Connection error."]
 
 # ---------------------------
-# 4. MAIN APP LOGIC (STATUS & SPEC FIX)
+# 4. MAIN APP LOGIC (UI UPDATED)
 # ---------------------------
 st.title("🏛️ Public Sector Contracts AI")
 if st.button("🏠 Home / Reset App"):
@@ -109,8 +109,9 @@ st.divider()
 
 if st.session_state.active_bid_text:
     doc = st.session_state.active_bid_text
-    st.subheader("🔍 Search this Document")
-    user_q = st.text_input("Ask a question:", key="active_q")
+    # CHANGED: Label updated to "Search Document"
+    st.subheader("🔍 Search Document")
+    user_q = st.text_input("Enter your query about this contract:", key="active_q")
     if user_q:
         st.write(f"**Answer:** {run_ai(doc, user_q, is_search=True)}")
     st.divider()
@@ -121,19 +122,15 @@ if st.session_state.active_bid_text:
     else:
         if not st.session_state.get("agency_name"):
             with st.status("🏗️ Analyzing..."):
-                st.session_state.status_flag = run_ai(doc, "OPEN or CLOSED?", is_header=True)
-                st.session_state.agency_name = run_ai(doc, "Agency?", is_header=True)
-                st.session_state.project_title = run_ai(doc, "Title?", is_header=True)
-                st.session_state.due_date = run_ai(doc, "Deadline?", is_header=True)
+                st.session_state.status_flag = run_ai(doc, "Is the bid OPEN or CLOSED?", is_header=True)
+                st.session_state.agency_name = run_ai(doc, "What is the specific government agency name?", is_header=True)
+                st.session_state.project_title = run_ai(doc, "What is the specific project/bid name?", is_header=True)
+                st.session_state.due_date = run_ai(doc, "Deadline date?", is_header=True)
             st.rerun()
 
         st.subheader("🏛️ Project Snapshot")
         status_raw = st.session_state.status_flag.upper()
         date_raw = st.session_state.due_date
-        
-        # Hard Check for 2026 defense: Today is April 22. 
-        # If date is today or in May 2026, it is OPEN. 
-        # If date is 2025 or earlier, it is CLOSED.
         is_past_year = any(yr in date_raw for yr in ["2021", "2022", "2023", "2024", "2025"])
         is_due_today = "April 22, 2026" in date_raw
         
@@ -144,11 +141,11 @@ if st.session_state.active_bid_text:
             
         st.write(f"**🏛️ AGENCY:** {st.session_state.agency_name}"); st.write(f"**📄 BID NAME:** {st.session_state.project_title}")
         st.divider()
-        b1, b2 = st.tabs(["📖 Scope of Work", "🛠️ Specifications"])
-        with b1: st.info(run_ai(doc, "Summarize the scope and quantities.", is_scope=True))
-        with b2: 
-            # FIXED: AI will now only list physical gear (e.g. Smartphones) instead of software concepts
-            st.success(run_ai(doc, "List only physical IT gear requested, such as mobile devices."))
+        
+        # REMOVED: Specifications tab has been deleted
+        st.subheader("📖 Scope of Work")
+        st.info(run_ai(doc, "Summarize the scope and quantities.", is_scope=True))
+
 else:
     tab1, tab2, tab3 = st.tabs(["📄 Bid Document", "📊 Compliance", "🔗 Agency URL"])
     with tab1:
