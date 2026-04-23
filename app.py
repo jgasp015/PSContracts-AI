@@ -13,12 +13,12 @@ except ImportError:
     import pytz
 
 # ---------------------------
-# 0. PAGE CONFIGURATION (LOCKED)
+# 0. PAGE CONFIGURATION
 # ---------------------------
 st.set_page_config(page_title="Public Sector Contracts AI", page_icon="🏛️")
 
 # ---------------------------
-# 1. STATE & RESET (LOCKED)
+# 1. STATE & RESET
 # ---------------------------
 if "total_saved" not in st.session_state:
     st.session_state.total_saved = 480
@@ -35,7 +35,7 @@ def hard_reset_callback():
             del st.session_state[key]
 
 # ---------------------------
-# 2. THE ENGINE (STRICT TRANSLATION LOGIC)
+# 2. THE ENGINE (SEARCH TRANSLATION UPGRADED)
 # ---------------------------
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 
@@ -50,22 +50,27 @@ def run_ai(text, prompt, is_compliance=False, is_header=False, is_search=False, 
     headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
     ctx = text[:60000] 
     
+    # Define the Plain English "Translation Layer"
+    simple_translation_rules = """
+    STRICT TRANSLATION RULES:
+    1. Act as a Plain English Translator for regular people.
+    2. DO NOT use legal jargon or the exact 'lawyer talk' from the document.
+    3. If the user asks about complex terms (like 'Termination for Convenience' or 'Indemnification'), 
+       explain them as 'How they can fire you' or 'Who pays if things break'.
+    4. Use simple, 5th-grade vocabulary.
+    5. Be brief and direct.
+    """
+
     if is_compliance:
         system_rules = "RULES: 1. BE DIRECT. 2. Extract SLAs. 3. SIMPLE ENGLISH."
     elif is_header:
         system_rules = f"RULES: 1. Extract ONLY proper names. 2. Today is {current_time_str}. 3. If deadline passed, say 'CLOSED'."
     elif is_search:
-        system_rules = "You are a helpful assistant. Answer based on document."
+        # UPGRADED: Added translation rules to the Search Document feature
+        system_rules = f"{simple_translation_rules}\nTASK: Answer the user's specific question using the document text but translate the answer into plain English."
     elif is_scope:
-        # STRONGER PLAIN ENGLISH INSTRUCTIONS
-        system_rules = """
-        STRICT RULES:
-        1. You are a 'Plain English' translator for ordinary people.
-        2. DO NOT use the original legal wording from the contract.
-        3. TRANSLATE words like 'execute', 'solicitation', 'indemnity', 'provision', and 'pursuant' into basic 5th-grade English.
-        4. EXPLAIN the job like you are talking to a friend who is not a lawyer.
-        5. FORMAT: Use a 'The Bottom Line' section followed by 'What you need to do' and 'What you get'.
-        """
+        # Overview already uses this
+        system_rules = f"{simple_translation_rules}\nTASK: Explain the whole job in simple terms."
     else:
         system_rules = "CORE INSTRUCTION: 1. List physical hardware only. 2. Use bullets (*)."
     
@@ -98,7 +103,7 @@ def scrape_agency_bids(url):
     except: return guidance
 
 # ---------------------------
-# 4. MAIN APP LOGIC (LOCKED)
+# 4. MAIN APP LOGIC (LOCKED UI)
 # ---------------------------
 st.title("🏛️ Public Sector Contracts AI")
 st.button("🏠 Home / Reset App", on_click=hard_reset_callback)
@@ -107,8 +112,10 @@ st.divider()
 if st.session_state.get("active_bid_text"):
     doc = st.session_state.active_bid_text
     st.subheader("🔍 Search Document")
-    user_q = st.text_input("Enter your query:", key="active_q")
-    if user_q: st.write(f"**Answer:** {run_ai(doc, user_q, is_search=True)}")
+    user_q = st.text_input("Enter your query (e.g., 'What is the termination policy?'):", key="active_q")
+    if user_q: 
+        # THIS NOW RETURNS THE PLAIN ENGLISH TRANSLATION
+        st.write(f"**Answer (Simplified):** {run_ai(doc, user_q, is_search=True)}")
     st.divider()
     
     if st.session_state.get("analysis_mode") == "Reporting":
@@ -135,7 +142,6 @@ if st.session_state.get("active_bid_text"):
         st.write(f"**📄 BID NAME:** {st.session_state.project_title}")
         st.divider()
         
-        # THE OVERVIEW TAB NOW ACTIVATES THE PLAIN ENGLISH ENGINE
         st.subheader("📖 Bid Overview (Simple Terms)")
         st.info(run_ai(doc, "Explain this whole job in very simple terms for a regular person.", is_scope=True))
 
