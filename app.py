@@ -26,7 +26,7 @@ def hard_reset():
     st.rerun()
 
 # ---------------------------
-# 2. THE ENGINE (LOCKED & STATUS FIXED)
+# 2. THE ENGINE (LOCKED)
 # ---------------------------
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 
@@ -40,8 +40,7 @@ def run_ai(text, prompt, is_compliance=False, is_header=False, is_search=False, 
     if is_compliance:
         system_rules = "RULES: 1. BE DIRECT. 2. Extract SLAs. 3. SIMPLE ENGLISH."
     elif is_header:
-        # FIXED: Added strict formatting rules to prevent the AI from mixing up Agency names with Dates
-        system_rules = f"RULES: 1. Extract ONLY the requested data point. 2. Today is {today}. 3. For 'Deadline', extract only the date (Month Day, Year). 4. If a date is before 2026, you MUST include 'CLOSED' in the status response."
+        system_rules = f"RULES: 1. Extract ONLY the specific proper name. 2. Today is {today}. 3. If a date is before 2026, you MUST include 'CLOSED' in the status."
     elif is_search:
         system_rules = "You are a helpful assistant. Answer based on document."
     elif is_scope:
@@ -57,15 +56,30 @@ def run_ai(text, prompt, is_compliance=False, is_header=False, is_search=False, 
         return "⚠️ AI Connection Error."
 
 # ---------------------------
-# 3. ADVANCED UNIVERSAL SCRAPER (LOCKED)
+# 3. UNIVERSAL BID SCRAPER (BIDNET + OTHERS)
 # ---------------------------
 def scrape_agency_bids(url):
     try:
         headers = {'User-Agent': 'Mozilla/5.0'}
-        dynamic_portals = {"planetbids": "PlanetBids", "rampla.org": "RAMP LA", "caleprocure.ca.gov": "Cal eProcure (CSCR)", "oc.gov": "Orange County OpenGov Portal", "opengov.com": "OpenGov Procurement"}
+        
+        # 🎯 LOGIC A: DYNAMIC PORTAL DETECTION (Includes BidNet Direct)
+        dynamic_portals = {
+            "planetbids": "PlanetBids",
+            "rampla.org": "RAMP LA",
+            "caleprocure.ca.gov": "Cal eProcure (CSCR)",
+            "oc.gov": "Orange County OpenGov Portal",
+            "bidnetdirect.com": "BidNet Direct (Washington Purchasing Group)"
+        }
+        
         for key, name in dynamic_portals.items():
             if key in url.lower():
-                return [f"🏛️ **{name} Detection**", "⚠️ *This site uses a dynamic portal.*", "📄 **Instruction:** Download the PDF and upload it to the **'Bid Document'** tab."]
+                return [
+                    f"🏛️ **{name} Detection**",
+                    "⚠️ *This site uses a dynamic/protected procurement portal.*",
+                    "📄 **Instruction:** To analyze a specific bid, please download the PDF solicitation from the portal and upload it to the **'Bid Document'** tab."
+                ]
+
+        # 🎯 LOGIC B: LA COUNTY ISD
         if "la.ca.us" in url.lower() and "dpw" not in url.lower():
             r = requests.get(url, headers=headers, timeout=15)
             soup = BeautifulSoup(r.text, 'html.parser')
@@ -77,6 +91,8 @@ def scrape_agency_bids(url):
                     full_text = " ".join(parent_row.get_text(separator=" ").split()) if parent_row else text
                     found_bids.append(f"📄 {full_text}")
             return list(dict.fromkeys(found_bids)) if found_bids else ["❓ No LA ISD bids found."]
+
+        # 🎯 LOGIC C: LA DPW
         elif "dpw.lacounty.gov" in url.lower():
             r = requests.get(url, headers=headers, timeout=15)
             soup = BeautifulSoup(r.text, 'html.parser')
@@ -86,6 +102,8 @@ def scrape_agency_bids(url):
                 if any(p in text for p in ["BRC", "FCC", "RFP", "ID No."]):
                     if len(text) > 15: found_bids.append(f"📄 {text}")
             return list(dict.fromkeys(found_bids)) if found_bids else ["❓ LA DPW bids not found."]
+
+        # 🎯 LOGIC D: DGS / STANDARD SITES
         else:
             r = requests.get(url, headers=headers, timeout=15)
             soup = BeautifulSoup(r.text, 'html.parser')
@@ -97,10 +115,11 @@ def scrape_agency_bids(url):
                     if not any(n in text.lower() for n in noise):
                         if len(text) > 15: found_bids.append(f"📄 {text}")
             return list(dict.fromkeys(found_bids)) if found_bids else ["❓ No primary titles found."]
+            
     except: return ["⚠️ Connection error."]
 
 # ---------------------------
-# 4. MAIN APP LOGIC (STATUS FIX)
+# 4. MAIN APP LOGIC (LOCKED UI)
 # ---------------------------
 st.title("🏛️ Public Sector Contracts AI")
 if st.button("🏠 Home / Reset App"):
@@ -122,35 +141,24 @@ if st.session_state.active_bid_text:
         if not st.session_state.get("agency_name"):
             with st.status("🏗️ Analyzing..."):
                 st.session_state.status_flag = run_ai(doc, "Is the bid OPEN or CLOSED?", is_header=True)
-                st.session_state.agency_name = run_ai(doc, "What is the specific government agency name?", is_header=True)
-                st.session_state.project_title = run_ai(doc, "What is the specific project title?", is_header=True)
-                st.session_state.due_date = run_ai(doc, "What is the submittal deadline date?", is_header=True)
+                st.session_state.agency_name = run_ai(doc, "Agency proper name?", is_header=True)
+                st.session_state.project_title = run_ai(doc, "Project proper name?", is_header=True)
+                st.session_state.due_date = run_ai(doc, "Deadline date?", is_header=True)
             st.rerun()
 
         st.subheader("🏛️ Project Snapshot")
         status_raw = st.session_state.status_flag.upper()
         date_raw = st.session_state.due_date
-        
-        # FIXED: Hard logic to prevent Agency name from leaking into the date/status field
         is_past_year = any(yr in date_raw for yr in ["2021", "2022", "2023", "2024", "2025"])
         is_due_today = "April 22, 2026" in date_raw
         
-        # If the date is just the agency name, force a re-check or show as unknown
-        if "COUNTY" in date_raw.upper() or "LOS ANGELES" in date_raw.upper():
-            date_display = "Reviewing Document..."
-        else:
-            date_display = date_raw
-
         if (is_past_year or "CLOSED" in status_raw) and not is_due_today:
-            st.error(f"● STATUS: CLOSED | DUE: {date_display}")
+            st.error(f"● STATUS: CLOSED | DUE: {date_raw}")
         else:
-            st.success(f"● STATUS: OPEN | DUE: {date_display}")
+            st.success(f"● STATUS: OPEN | DUE: {date_raw}")
             
-        st.write(f"**🏛️ AGENCY:** {st.session_state.agency_name}")
-        st.write(f"**📄 BID NAME:** {st.session_state.project_title}")
+        st.write(f"**🏛️ AGENCY:** {st.session_state.agency_name}"); st.write(f"**📄 BID NAME:** {st.session_state.project_title}")
         st.divider()
-        
-        # UNTOUCHED: Descriptive Scope of Work logic
         st.subheader("📖 Bid Overview")
         st.info(run_ai(doc, "Summarize the scope and quantities.", is_scope=True))
 
