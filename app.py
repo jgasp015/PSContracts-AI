@@ -10,26 +10,24 @@ import os
 st.set_page_config(page_title="Public Sector Contracts AI", page_icon="🏛️")
 
 # ---------------------------
-# 1. STATE & RESET (FIXED URL PERSISTENCE)
+# 1. STATE & RESET (RELIABLE CALLBACK FIX)
 # ---------------------------
 if "total_saved" not in st.session_state:
     st.session_state.total_saved = 480
 if "active_bid_text" not in st.session_state:
     st.session_state.active_bid_text = None
 
-def hard_reset():
-    # 1. Clear the specific widget key
+# This function is now an 'on_click' callback
+def hard_reset_callback():
+    # 1. Explicitly clear the widget key first
     if "agency_url_input" in st.session_state:
         st.session_state["agency_url_input"] = ""
     
-    # 2. Clear all other analysis data
+    # 2. Clear all other session data except performance metrics
     keys_to_keep = ["total_saved"]
     for key in list(st.session_state.keys()):
         if key not in keys_to_keep:
             del st.session_state[key]
-            
-    # 3. Force the app to restart with empty state
-    st.rerun()
 
 # ---------------------------
 # 2. THE ENGINE (LOCKED)
@@ -62,7 +60,7 @@ def run_ai(text, prompt, is_compliance=False, is_header=False, is_search=False, 
         return "⚠️ AI Connection Error."
 
 # ---------------------------
-# 3. ADVANCED UNIVERSAL SCRAPER (LOCKED)
+# 3. UNIVERSAL BID SCRAPER (LOCKED)
 # ---------------------------
 def scrape_agency_bids(url):
     guidance = [
@@ -79,8 +77,6 @@ def scrape_agency_bids(url):
         r = requests.get(url, headers=headers, timeout=15)
         soup = BeautifulSoup(r.text, 'html.parser')
         found_bids = []
-        
-        # Standard Gov Pattern Detection
         noise = ["plans", "specifications", "addendum", "report", "manual", "package", "response", "sheet"]
         for el in soup.find_all(['b', 'strong', 'a', 'li']):
             text = " ".join(el.get_text().split()).strip()
@@ -93,11 +89,11 @@ def scrape_agency_bids(url):
 # 4. MAIN APP LOGIC
 # ---------------------------
 st.title("🏛️ Public Sector Contracts AI")
-if st.button("🏠 Home / Reset App"):
-    hard_reset()
+# Use the function as an on_click callback for instant reset
+st.button("🏠 Home / Reset App", on_click=hard_reset_callback)
 st.divider()
 
-if st.session_state.active_bid_text:
+if st.session_state.get("active_bid_text"):
     doc = st.session_state.active_bid_text
     st.subheader("🔍 Search Document")
     user_q = st.text_input("Enter your query:", key="active_q")
@@ -143,7 +139,6 @@ else:
             st.session_state.analysis_mode = "Reporting"
             st.rerun()
     with tab3:
-        # Key 'agency_url_input' is what hard_reset() now targets
         url_input = st.text_input("Agency URL:", key="agency_url_input")
         if url_input:
             with st.spinner("Analyzing Infrastructure..."):
