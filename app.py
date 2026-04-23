@@ -111,7 +111,7 @@ st.divider()
 if st.session_state.active_bid_text:
     doc = st.session_state.active_bid_text
     st.subheader("🔍 Search Document")
-    user_q = st.text_input("Let AI analyze the contract:", key="active_q")
+    user_q = st.text_input("Ask about this contract:", key="active_q")
     if user_q:
         st.write(f"**Answer:** {run_ai(doc, user_q, is_search=True)}")
     st.divider()
