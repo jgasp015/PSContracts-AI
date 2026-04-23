@@ -35,7 +35,7 @@ def hard_reset_callback():
             del st.session_state[key]
 
 # ---------------------------
-# 2. THE ENGINE (PLAIN ENGLISH TRANSLATION UPDATED)
+# 2. THE ENGINE (STRICT TRANSLATION LOGIC)
 # ---------------------------
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 
@@ -51,21 +51,20 @@ def run_ai(text, prompt, is_compliance=False, is_header=False, is_search=False, 
     ctx = text[:60000] 
     
     if is_compliance:
-        # Compliance still focuses on strict SLAs
         system_rules = "RULES: 1. BE DIRECT. 2. Extract SLAs. 3. SIMPLE ENGLISH."
     elif is_header:
         system_rules = f"RULES: 1. Extract ONLY proper names. 2. Today is {current_time_str}. 3. If deadline passed, say 'CLOSED'."
     elif is_search:
         system_rules = "You are a helpful assistant. Answer based on document."
     elif is_scope:
-        # NEW: The Translation Engine
+        # STRONGER PLAIN ENGLISH INSTRUCTIONS
         system_rules = """
-        CORE INSTRUCTION: 
-        1. Act as a Plain English Translator for complex government contracts.
-        2. TRANSLATE all legal and technical jargon into words a non-lawyer would understand.
-        3. REPLACE words like 'Indemnification' with 'Protection against loss' or 'Solicitation' with 'Job Post'.
-        4. STRUCTURE: Provide a clear list of (a) What they want, (b) How many they want, and (c) What the winner must do.
-        5. AVOID 'walls of text'—use bullet points.
+        STRICT RULES:
+        1. You are a 'Plain English' translator for ordinary people.
+        2. DO NOT use the original legal wording from the contract.
+        3. TRANSLATE words like 'execute', 'solicitation', 'indemnity', 'provision', and 'pursuant' into basic 5th-grade English.
+        4. EXPLAIN the job like you are talking to a friend who is not a lawyer.
+        5. FORMAT: Use a 'The Bottom Line' section followed by 'What you need to do' and 'What you get'.
         """
     else:
         system_rules = "CORE INSTRUCTION: 1. List physical hardware only. 2. Use bullets (*)."
@@ -136,9 +135,9 @@ if st.session_state.get("active_bid_text"):
         st.write(f"**📄 BID NAME:** {st.session_state.project_title}")
         st.divider()
         
-        # THIS SECTION NOW USES THE PLAIN ENGLISH TRANSLATION ENGINE
-        st.subheader("📖 Bid Overview (Simplified)")
-        st.info(run_ai(doc, "Translate this contract into plain English for a non-lawyer.", is_scope=True))
+        # THE OVERVIEW TAB NOW ACTIVATES THE PLAIN ENGLISH ENGINE
+        st.subheader("📖 Bid Overview (Simple Terms)")
+        st.info(run_ai(doc, "Explain this whole job in very simple terms for a regular person.", is_scope=True))
 
 else:
     tab1, tab2, tab3 = st.tabs(["📄 Bid Document", "📊 Compliance", "🔗 Agency URL"])
