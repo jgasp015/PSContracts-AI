@@ -56,18 +56,19 @@ def run_ai(text, prompt, is_compliance=False, is_header=False, is_search=False, 
         return "⚠️ AI Connection Error."
 
 # ---------------------------
-# 3. ADVANCED MULTI-AGENCY SCRAPER (PLANETBIDS ADDED)
+# 3. ADVANCED MULTI-AGENCY SCRAPER (RAMP LA ADDED)
 # ---------------------------
 def scrape_agency_bids(url):
     try:
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
         
-        # 🎯 LOGIC A: PLANETBIDS (Dynamic App Detection)
-        if "planetbids" in url.lower():
+        # 🎯 LOGIC A: DYNAMIC PORTAL DETECTION (PlanetBids & RAMP LA)
+        if "planetbids" in url.lower() or "rampla.org" in url.lower():
+            portal_name = "RAMP LA" if "rampla" in url.lower() else "PlanetBids"
             return [
-                "🏛️ **PlanetBids Portal Detected**",
+                f"🏛️ **{portal_name} Portal Detected**",
                 "⚠️ *This agency uses a protected JavaScript-heavy portal.*",
-                "📄 Please download the 'Bid Results' or 'Solicitation PDF' directly from the portal and upload it to the **'Bid Document'** tab for full AI analysis."
+                "📄 Please download the 'Solicitation PDF' or 'Scope' directly from the portal and upload it to the **'Bid Document'** tab for AI analysis."
             ]
 
         # 🎯 LOGIC B: LA COUNTY (Table-Row Based)
@@ -160,7 +161,7 @@ else:
     with tab3:
         url_input = st.text_input("Agency URL:", key="agency_url")
         if url_input:
-            with st.spinner("Extracting Titles..."):
+            with st.spinner("Analyzing Agency Infrastructure..."):
                 for b in scrape_agency_bids(url_input): st.write(b)
 
 with st.sidebar:
