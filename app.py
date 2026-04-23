@@ -26,7 +26,7 @@ def hard_reset():
     st.rerun()
 
 # ---------------------------
-# 2. THE ENGINE (LOCKED & UI REFINED)
+# 2. THE ENGINE (RESTORED SCOPE & REFINED TITLES)
 # ---------------------------
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 
@@ -40,12 +40,13 @@ def run_ai(text, prompt, is_compliance=False, is_header=False, is_search=False, 
     if is_compliance:
         system_rules = "RULES: 1. BE DIRECT. 2. Extract SLAs. 3. SIMPLE ENGLISH."
     elif is_header:
-        # REFINED: Stronger instructions to get the actual name instead of generic 'Yes' or 'Request for Bid'
-        system_rules = f"RULES: 1. Extract the specific proper name only. 2. If Today is {today} and document date is before 2026, say 'CLOSED'. 3. Avoid generic terms like 'Agency' or 'RFP'."
+        # REFINED: Even stricter focus on proper names to fix "Agency: Yes" issues
+        system_rules = f"RULES: 1. You are a data extractor. 2. Extract ONLY the proper legal name of the Agency or Project. 3. No prose. 4. If Today is {today} and document date is before 2026, say 'CLOSED'."
     elif is_search:
         system_rules = "You are a helpful assistant. Answer based on document."
     elif is_scope:
-        system_rules = "CORE INSTRUCTION: 1. ANALYZE whole text. 2. List QUANTITIES and TASKS. 3. NO repetition. 4. Be descriptive."
+        # RESTORED: Your original high-functioning Scope of Work instructions
+        system_rules = "CORE INSTRUCTION: 1. ANALYZE the whole text. 2. List specific QUANTITIES and ACTION TASKS. 3. NO repetition. 4. Be descriptive and detailed."
     else:
         system_rules = "CORE INSTRUCTION: 1. List physical hardware only. 2. Use bullets (*)."
     
@@ -100,7 +101,7 @@ def scrape_agency_bids(url):
     except: return ["⚠️ Connection error."]
 
 # ---------------------------
-# 4. MAIN APP LOGIC (UI UPDATED)
+# 4. MAIN APP LOGIC (UI & SCOPE RESTORED)
 # ---------------------------
 st.title("🏛️ Public Sector Contracts AI")
 if st.button("🏠 Home / Reset App"):
@@ -109,7 +110,6 @@ st.divider()
 
 if st.session_state.active_bid_text:
     doc = st.session_state.active_bid_text
-    # CHANGED: Label updated to "Search Document"
     st.subheader("🔍 Search Document")
     user_q = st.text_input("Enter your query about this contract:", key="active_q")
     if user_q:
@@ -123,8 +123,8 @@ if st.session_state.active_bid_text:
         if not st.session_state.get("agency_name"):
             with st.status("🏗️ Analyzing..."):
                 st.session_state.status_flag = run_ai(doc, "Is the bid OPEN or CLOSED?", is_header=True)
-                st.session_state.agency_name = run_ai(doc, "What is the specific government agency name?", is_header=True)
-                st.session_state.project_title = run_ai(doc, "What is the specific project/bid name?", is_header=True)
+                st.session_state.agency_name = run_ai(doc, "What is the specific government agency name? (e.g. County of Orange)", is_header=True)
+                st.session_state.project_title = run_ai(doc, "What is the specific project title? (e.g. Cyber Program Administrator)", is_header=True)
                 st.session_state.due_date = run_ai(doc, "Deadline date?", is_header=True)
             st.rerun()
 
@@ -139,10 +139,11 @@ if st.session_state.active_bid_text:
         else:
             st.success(f"● STATUS: OPEN | DUE: {date_raw}")
             
-        st.write(f"**🏛️ AGENCY:** {st.session_state.agency_name}"); st.write(f"**📄 BID NAME:** {st.session_state.project_title}")
+        st.write(f"**🏛️ AGENCY:** {st.session_state.agency_name}")
+        st.write(f"**📄 BID NAME:** {st.session_state.project_title}")
         st.divider()
         
-        # REMOVED: Specifications tab has been deleted
+        # RESTORED: Back to original high-quality descriptive Scope
         st.subheader("📖 Scope of Work")
         st.info(run_ai(doc, "Summarize the scope and quantities.", is_scope=True))
 
