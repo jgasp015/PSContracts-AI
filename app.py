@@ -5,7 +5,7 @@ from bs4 import BeautifulSoup
 import os 
 
 # ---------------------------
-# 0. PAGE CONFIGURATION (PROFESSIONAL BRANDING)
+# 0. PAGE CONFIGURATION (LOCKED)
 # ---------------------------
 st.set_page_config(page_title="Public Sector Contracts AI", page_icon="🏛️")
 
@@ -56,28 +56,30 @@ def run_ai(text, prompt, is_compliance=False, is_header=False, is_search=False, 
         return "⚠️ AI Connection Error."
 
 # ---------------------------
-# 3. ADVANCED UNIVERSAL SCRAPER (CAL EPROCURE ADDED)
+# 3. ADVANCED UNIVERSAL SCRAPER (OPENGOV/OC ADDED)
 # ---------------------------
 def scrape_agency_bids(url):
     try:
         headers = {'User-Agent': 'Mozilla/5.0'}
         
-        # 🎯 LOGIC A: DYNAMIC ENTERPRISE PORTALS (PlanetBids, RAMP, Cal eProcure)
+        # 🎯 LOGIC A: DYNAMIC PORTAL DETECTION (Enterprise Systems)
         dynamic_portals = {
             "planetbids": "PlanetBids",
             "rampla.org": "RAMP LA",
-            "caleprocure.ca.gov": "Cal eProcure (CSCR)"
+            "caleprocure.ca.gov": "Cal eProcure (CSCR)",
+            "oc.gov": "Orange County OpenGov Portal",
+            "opengov.com": "OpenGov Procurement"
         }
         
         for key, name in dynamic_portals.items():
             if key in url.lower():
                 return [
-                    f"🏛️ **{name} Portal Detected**",
-                    "⚠️ *This site uses a high-security Enterprise database (PeopleSoft/Dynamic JS).*",
-                    "📄 **Instruction:** To analyze a specific bid from this portal, please download the 'Event Details' or 'Solicitation' PDF and upload it to the **'Bid Document'** tab."
+                    f"🏛️ **{name} Detection**",
+                    "⚠️ *This site uses a dynamic OpenGov/Enterprise infrastructure.*",
+                    "📄 **Instruction:** To analyze a specific Orange County bid, please download the 'Solicitation' or 'RFP' PDF from the portal and upload it to the **'Bid Document'** tab."
                 ]
 
-        # 🎯 LOGIC B: LA COUNTY (Table-Row Based)
+        # 🎯 LOGIC B: LA COUNTY ISD
         if "la.ca.us" in url.lower() and "dpw" not in url.lower():
             r = requests.get(url, headers=headers, timeout=15)
             soup = BeautifulSoup(r.text, 'html.parser')
@@ -90,7 +92,7 @@ def scrape_agency_bids(url):
                     found_bids.append(f"📄 {full_text}")
             return list(dict.fromkeys(found_bids)) if found_bids else ["❓ No LA ISD bids found."]
 
-        # 🎯 LOGIC C: LA DPW (Pattern Based)
+        # 🎯 LOGIC C: LA DPW
         elif "dpw.lacounty.gov" in url.lower():
             r = requests.get(url, headers=headers, timeout=15)
             soup = BeautifulSoup(r.text, 'html.parser')
@@ -99,9 +101,9 @@ def scrape_agency_bids(url):
                 text = " ".join(element.get_text().split()).strip()
                 if any(p in text for p in ["BRC", "FCC", "RFP", "ID No."]):
                     if len(text) > 15: found_bids.append(f"📄 {text}")
-            return list(dict.fromkeys(found_bids)) if found_bids else ["❓ LA DPW bids not found in static view."]
+            return list(dict.fromkeys(found_bids)) if found_bids else ["❓ LA DPW bids not found."]
 
-        # 🎯 LOGIC D: DGS / STANDARD SITES (Pattern Based)
+        # 🎯 LOGIC D: DGS / STANDARD SITES
         else:
             r = requests.get(url, headers=headers, timeout=15)
             soup = BeautifulSoup(r.text, 'html.parser')
