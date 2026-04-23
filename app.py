@@ -144,7 +144,7 @@ if st.session_state.active_bid_text:
         st.divider()
         
         # RESTORED: Back to original high-quality descriptive Scope
-        st.subheader("📖 Scope of Work")
+        st.subheader("📖 Bid Overview")
         st.info(run_ai(doc, "Summarize the scope and quantities.", is_scope=True))
 
 else:
