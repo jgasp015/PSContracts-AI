@@ -56,10 +56,10 @@ def run_ai(text, prompt, is_compliance=False, is_header=False, is_search=False, 
         return "⚠️ AI Connection Error."
 
 # ---------------------------
-# 3. UNIVERSAL BID SCRAPER (WITH UNIVERSAL CATCH-ALL)
+# 3. UNIVERSAL BID SCRAPER (GEP SMART ADDED)
 # ---------------------------
 def scrape_agency_bids(url):
-    # Standard guidance for dynamic/unreadable portals
+    # Professional guidance for dynamic/unreadable portals
     guidance = [
         "⚠️ **This site uses a dynamic/protected procurement portal.**",
         "📄 **Instruction:** To analyze a specific bid, please download the PDF solicitation directly from the portal and upload it to the **'Bid Document'** tab."
@@ -69,8 +69,8 @@ def scrape_agency_bids(url):
         headers = {'User-Agent': 'Mozilla/5.0'}
         url_lower = url.lower()
         
-        # 🎯 LOGIC A: DYNAMIC PORTAL KEYWORD DETECTION
-        dynamic_portals = ["planetbids", "rampla.org", "caleprocure", "oc.gov", "bidnetdirect", "hacla.org"]
+        # 🎯 LOGIC A: DYNAMIC PORTAL DETECTION (Includes GEP SMART)
+        dynamic_portals = ["planetbids", "rampla.org", "caleprocure", "oc.gov", "bidnetdirect", "hacla.org", "gep.com"]
         if any(p in url_lower for p in dynamic_portals):
             return guidance
 
@@ -112,7 +112,6 @@ def scrape_agency_bids(url):
             return list(dict.fromkeys(found_bids)) if found_bids else guidance
             
     except:
-        # UNIVERSAL CATCH-ALL: If connection fails or site blocks scraper, show guidance
         return guidance
 
 # ---------------------------
