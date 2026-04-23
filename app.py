@@ -5,7 +5,7 @@ from bs4 import BeautifulSoup
 import os 
 
 # ---------------------------
-# 0. PAGE CONFIGURATION (LOCKED)
+# 0. PAGE CONFIGURATION (TAB BRANDING)
 # ---------------------------
 st.set_page_config(page_title="Public Sector Contracts AI", page_icon="🏛️")
 
@@ -26,7 +26,7 @@ def hard_reset():
     st.rerun()
 
 # ---------------------------
-# 2. THE ENGINE (LOCKED)
+# 2. THE ENGINE (GROQ Llama 3.1)
 # ---------------------------
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 
@@ -40,11 +40,11 @@ def run_ai(text, prompt, is_compliance=False, is_header=False, is_search=False, 
     if is_compliance:
         system_rules = "RULES: 1. BE DIRECT. 2. Extract SLAs. 3. SIMPLE ENGLISH."
     elif is_header:
-        system_rules = f"RULES: 1. Extract ONLY the specific proper name. 2. Today is {today}. 3. If a date is before 2026, you MUST include 'CLOSED' in the status."
+        system_rules = f"RULES: 1. Extract ONLY the specific proper name. 2. Today is {today}. 3. If date is before 2026, include 'CLOSED'."
     elif is_search:
         system_rules = "You are a helpful assistant. Answer based on document."
     elif is_scope:
-        system_rules = "CORE INSTRUCTION: 1. ANALYZE the whole text. 2. List specific QUANTITIES and ACTION TASKS. 3. NO repetition. 4. Be descriptive and detailed."
+        system_rules = "CORE INSTRUCTION: 1. ANALYZE the whole text. 2. List specific QUANTITIES and ACTION TASKS. 3. Be descriptive."
     else:
         system_rules = "CORE INSTRUCTION: 1. List physical hardware only. 2. Use bullets (*)."
     
@@ -56,10 +56,10 @@ def run_ai(text, prompt, is_compliance=False, is_header=False, is_search=False, 
         return "⚠️ AI Connection Error."
 
 # ---------------------------
-# 3. UNIVERSAL BID SCRAPER (GEP SMART ADDED)
+# 3. UNIVERSAL BID SCRAPER (ROUTING LOGIC)
 # ---------------------------
 def scrape_agency_bids(url):
-    # Professional guidance for dynamic/unreadable portals
+    # Professional guidance for dynamic portals that block basic scrapers
     guidance = [
         "⚠️ **This site uses a dynamic/protected procurement portal.**",
         "📄 **Instruction:** To analyze a specific bid, please download the PDF solicitation directly from the portal and upload it to the **'Bid Document'** tab."
@@ -69,12 +69,13 @@ def scrape_agency_bids(url):
         headers = {'User-Agent': 'Mozilla/5.0'}
         url_lower = url.lower()
         
-        # 🎯 LOGIC A: DYNAMIC PORTAL DETECTION (Includes GEP SMART)
-        dynamic_portals = ["planetbids", "rampla.org", "caleprocure", "oc.gov", "bidnetdirect", "hacla.org", "gep.com"]
-        if any(p in url_lower for p in dynamic_portals):
+        # 🎯 LOGIC A: DYNAMIC PORTAL DETECTION (CATCH-ALL)
+        # Includes PlanetBids, RAMP, Cal eProcure, GEP SMART, BidNet, HACLA, and Orange County
+        dynamic_keywords = ["planetbids", "rampla.org", "caleprocure", "oc.gov", "bidnetdirect", "hacla.org", "gep.com", "opengov"]
+        if any(p in url_lower for p in dynamic_keywords):
             return guidance
 
-        # 🎯 LOGIC B: LA COUNTY ISD
+        # 🎯 LOGIC B: LA COUNTY ISD (Table-Row Strategy)
         if "la.ca.us" in url_lower and "dpw" not in url_lower:
             r = requests.get(url, headers=headers, timeout=15)
             soup = BeautifulSoup(r.text, 'html.parser')
@@ -87,7 +88,7 @@ def scrape_agency_bids(url):
                     found_bids.append(f"📄 {full_text}")
             return list(dict.fromkeys(found_bids)) if found_bids else guidance
 
-        # 🎯 LOGIC C: LA DPW
+        # 🎯 LOGIC C: LA DPW (Pattern Recognition)
         elif "dpw.lacounty.gov" in url_lower:
             r = requests.get(url, headers=headers, timeout=15)
             soup = BeautifulSoup(r.text, 'html.parser')
@@ -98,7 +99,7 @@ def scrape_agency_bids(url):
                     if len(text) > 15: found_bids.append(f"📄 {text}")
             return list(dict.fromkeys(found_bids)) if found_bids else guidance
 
-        # 🎯 LOGIC D: STANDARD SITES (DGS, etc.)
+        # 🎯 LOGIC D: STANDARD SITES (DGS & Static HTML)
         else:
             r = requests.get(url, headers=headers, timeout=15)
             soup = BeautifulSoup(r.text, 'html.parser')
@@ -115,7 +116,7 @@ def scrape_agency_bids(url):
         return guidance
 
 # ---------------------------
-# 4. MAIN APP LOGIC (LOCKED UI)
+# 4. MAIN APP INTERFACE
 # ---------------------------
 st.title("🏛️ Public Sector Contracts AI")
 if st.button("🏠 Home / Reset App"):
