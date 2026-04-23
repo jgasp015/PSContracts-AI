@@ -5,6 +5,11 @@ from bs4 import BeautifulSoup
 import os 
 
 # ---------------------------
+# 0. PAGE CONFIGURATION (FIXES TAB NAME)
+# ---------------------------
+st.set_page_config(page_title="Public Sector Contracts AI", page_icon="🏛️")
+
+# ---------------------------
 # 1. STATE & RESET (LOCKED)
 # ---------------------------
 if "total_saved" not in st.session_state:
@@ -51,7 +56,7 @@ def run_ai(text, prompt, is_compliance=False, is_header=False, is_search=False, 
         return "⚠️ AI Connection Error."
 
 # ---------------------------
-# 3. SMART AGENCY SPLIT SCRAPER
+# 3. SMART AGENCY SPLIT SCRAPER (LOCKED)
 # ---------------------------
 def scrape_agency_bids(url):
     try:
@@ -59,11 +64,8 @@ def scrape_agency_bids(url):
         r = requests.get(url, headers=headers, timeout=15)
         soup = BeautifulSoup(r.text, 'html.parser')
         found_bids = []
-        
-        # Noise for DGS Cleanup
         noise = ["plans", "specifications", "addendum", "report", "manual", "package", "response", "sheet", "photos", "calculations", "asbestos", "dwgs", "dsa", "technical"]
 
-        # 🎯 LOGIC A: LA COUNTY (Table-Row Based)
         if "la.ca.us" in url.lower():
             for link in soup.find_all('a', href=True):
                 text = link.get_text().strip()
@@ -71,20 +73,15 @@ def scrape_agency_bids(url):
                     parent_row = link.find_parent('tr')
                     full_text = " ".join(parent_row.get_text(separator=" ").split()) if parent_row else text
                     found_bids.append(f"📄 {full_text}")
-
-        # 🎯 LOGIC B: DGS / OTHERS (Pattern-Based with Strict Filter)
         else:
             for element in soup.find_all(['b', 'strong', 'a', 'li']):
                 text = " ".join(element.get_text().split()).strip()
                 if any(text.startswith(yr) for yr in ["21-", "22-", "23-", "24-", "25-"]):
-                    # Strict Reject for DGS noise
                     if not any(n in text.lower() for n in noise):
-                        if len(text) > 15: # Valid project names are usually long
+                        if len(text) > 15:
                             found_bids.append(f"📄 {text}")
-        
         return list(dict.fromkeys(found_bids)) if found_bids else ["❓ No primary titles found."]
-    except:
-        return ["⚠️ Connection error."]
+    except: return ["⚠️ Connection error."]
 
 # ---------------------------
 # 4. MAIN APP LOGIC (LOCKED)
