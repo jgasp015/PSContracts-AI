@@ -149,7 +149,7 @@ if st.session_state.get("active_bid_text"):
         st.write(f"**📄 BID NAME:** {st.session_state.project_title}")
         st.divider()
         
-        st.subheader("📖 Bid Overview (Simple Terms)")
+        st.subheader("📖 Scope of Work (Simple Terms)")
         st.info(run_ai(doc, "Explain this whole job in very simple terms for a regular person.", is_scope=True))
 
 else:
